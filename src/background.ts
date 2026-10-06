@@ -15,8 +15,8 @@ export function drawBackdrop(g:CanvasRenderingContext2D,w:number,h:number,stage:
   for(let i=-1;i<3;i++){const x=i*span-shift;g.beginPath();g.moveTo(x,h*.57);g.quadraticCurveTo(x+span*.25,h*.39,x+span*.5,h*.52);g.quadraticCurveTo(x+span*.7,h*.43,x+span,h*.57);g.lineTo(x+span,h);g.lineTo(x,h);g.closePath();g.fill()}
  }
  if(stage>=4){
-  const span=w*.22,shift=(t*w*.055)%span;g.fillStyle=color+'1a';
-  for(let i=-1;i<6;i++){const x=i*span-shift,top=h*.56-(3+(i+6)%3)*h*.025;g.fillRect(x,top,span*.58,h*.62-top);if(stage>=6){g.fillStyle=color+'25';g.fillRect(x+span*.13,top+8,3,4);g.fillRect(x+span*.36,top+16,3,4);g.fillStyle=color+'1a'}}
+  const span=w*.22,travel=t*w*.055,shift=travel%span,tile=Math.floor(travel/span);g.fillStyle=color+'1a';
+  for(let i=-1;i<6;i++){const x=i*span-shift,top=h*.56-(3+(i+tile+6)%3)*h*.025;g.fillRect(x,top,span*.58,h*.62-top);if(stage>=6){g.fillStyle=color+'25';g.fillRect(x+span*.13,top+8,3,4);g.fillRect(x+span*.36,top+16,3,4);g.fillStyle=color+'1a'}}
  }
  if(stage>=5){
   const span=w*.46,shift=(t*w*.11)%span;g.fillStyle=color+'14';
