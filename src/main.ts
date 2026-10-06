@@ -31,17 +31,17 @@ function articulate(midi:number,now:number){
 function tap(){
  if(!running||resultShown)return;const now=audio.currentTime,song=now-beginning-INTRO_BEATS*BEAT-offset;
  if(song < -WINDOW||song>(TOTAL-1)*BEAT+WINDOW)return;
- if(now-lastInput<.08)return;lastInput=now;
  const n=Math.round(song/BEAT),error=Math.abs(song-n*BEAT);
  // Mandatory beats always take priority, including already judged beats.
  if(n>=0&&n<TOTAL&&error<=WINDOW){
-  if(judged.has(n))return;judged.add(n);successful.add(n);hits++;combo++;best=Math.max(best,combo);jump=now;secondJump=-10;landing=beginning+INTRO_BEATS*BEAT+(n+1)*BEAT;flash=error<.065?'PERFECT':'GOOD';feedbackUntil=now+.35;articulate(leadMidi(n+INTRO_BEATS)+12,now);updateStats();return;
+  if(judged.has(n))return;lastInput=now;judged.add(n);successful.add(n);hits++;combo++;best=Math.max(best,combo);jump=now;secondJump=-10;landing=beginning+INTRO_BEATS*BEAT+(n+1)*BEAT;flash=error<.065?'PERFECT':'GOOD';feedbackUntil=now+.35;articulate(leadMidi(n+INTRO_BEATS)+12,now);updateStats();return;
  }
  const prior=Math.floor(song/BEAT),offError=Math.abs(song-(prior+.5)*BEAT);
  if(prior>=0&&prior<TOTAL-1&&offError<=.075){
-  if(successful.has(prior)&&!extras.has(prior)&&now<landing-.04){extras.add(prior);secondJump=now;flash='DOUBLE HOP';feedbackUntil=now+.22;articulate(leadMidi(prior+INTRO_BEATS)+19,now)}
+  if(successful.has(prior)&&!extras.has(prior)&&now<landing-.04){extras.add(prior);lastInput=now;secondJump=now;flash='DOUBLE HOP';feedbackUntil=now+.22;articulate(leadMidi(prior+INTRO_BEATS)+19,now)}
   return; // Optional offbeats never punish or award score.
  }
+ if(now-lastInput<.08)return;lastInput=now;
  if(n>=0&&n<TOTAL&&!judged.has(n)){combo=0;flash='拍を待とう';feedbackUntil=now+.25;updateStats()}
 }
 function updateStats(){$('#score').textContent=`${String(hits).padStart(2,'0')} / 60`;$('#combo').textContent=`COMBO ${combo}`}
