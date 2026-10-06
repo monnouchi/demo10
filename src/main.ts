@@ -4,7 +4,7 @@ const canvas=$<HTMLCanvasElement>('canvas'), g=canvas.getContext('2d')!;
 const panel=$('#panel'), start=$<HTMLButtonElement>('#start'), message=$('#message');
 const WORLD_SCALE=.85;
 const BEAT=.5, INTRO_BEATS=8, OUTRO_BEATS=4, TOTAL=60, WINDOW=.14;
-let audio:AudioContext, master:GainNode, voices:OscillatorNode[]=[], gains:GainNode[]=[], noise:AudioBufferSourceNode, noiseGain:GainNode;
+let audio:AudioContext, master:GainNode, voices:OscillatorNode[]=[], gains:GainNode[]=[], noise:AudioBufferSourceNode, noiseGain:GainNode, noiseFilter:BiquadFilterNode;
 let resultShown=false;
 let running=false, muted=false, beginning=0, scheduled=0, combo=0,best=0,hits=0,offset=0,lastInput=-1,jump=-10,flash='', feedbackUntil=0;
 let successful=new Set<number>(), extras=new Set<number>(), landing=-10, secondJump=-10;
@@ -15,11 +15,47 @@ function initAudio(){
  audio=new AudioContext(); master=audio.createGain();master.gain.value=.55;master.connect(audio.destination);
  for(let i=0;i<3;i++){const o=audio.createOscillator(),v=audio.createGain();o.type=i===2?'triangle':'square';v.gain.value=0;o.connect(v).connect(master);o.start();voices.push(o);gains.push(v)}
  const b=audio.createBuffer(1,audio.sampleRate,audio.sampleRate),data=b.getChannelData(0);let seed=17;for(let i=0;i<data.length;i++){seed=(seed*16807)%2147483647;data[i]=seed/1073741824-1}
- noise=audio.createBufferSource();noise.buffer=b;noise.loop=true;noiseGain=audio.createGain();noiseGain.gain.value=0;noise.connect(noiseGain).connect(master);noise.start();
+ noise=audio.createBufferSource();noise.buffer=b;noise.loop=true;noiseGain=audio.createGain();noiseGain.gain.value=0;noiseFilter=audio.createBiquadFilter();noiseFilter.type='bandpass';noiseFilter.Q.value=.7;noise.connect(noiseFilter).connect(noiseGain).connect(master);noise.start();
 }
 function note(voice:number,midi:number,t:number,duration:number,level:number){const gain=gains[voice].gain;gain.setValueAtTime(0,t);voices[voice].frequency.setValueAtTime(440*2**((midi-69)/12),t);gain.setValueAtTime(level,t+.002);gain.linearRampToValueAtTime(0,t+duration)}
-function schedule(){if(!running)return;while(scheduled<INTRO_BEATS+TOTAL+OUTRO_BEATS&&beginning+scheduled*BEAT<audio.currentTime+.12){const n=scheduled++,t=beginning+n*BEAT;if(n<INTRO_BEATS){note(0,[72,76,79,76,74,76,79,83][n],t,.18,.055);note(1,n<4?60:67,t,.24,.035);note(2,n<4?36:43,t,.25,.14);noiseGain.gain.setValueAtTime(n%2?.04:.025,t);noiseGain.gain.linearRampToValueAtTime(0,t+.055);continue}const k=n-INTRO_BEATS;if(k>=TOTAL){const o=k-TOTAL;note(0,[79,76,74,72][o],t,o===3?.44:.25,.065);note(1,o===3?64:60,t,.44,.04);note(2,36,t,.45,.16);if(o===0){noiseGain.gain.setValueAtTime(.06,t);noiseGain.gain.linearRampToValueAtTime(0,t+.12)}continue}note(0,k>=52?[76,74,72,71,67,69,71,72][(k-52)%8]:melody[k%16],t,.20,.07);note(1,[60,65,57,67][Math.floor(k/8)%4]+(k%2?7:0),t,.26,.045);note(2,k>=56?36:[36,41,33,43][Math.floor(k/8)%4],t,.28,.17);noiseGain.gain.setValueAtTime(k%2?.065:.035,t);noiseGain.gain.linearRampToValueAtTime(0,t+.065)}}
-function silence(){for(const v of gains){v.gain.cancelScheduledValues(audio.currentTime);v.gain.setValueAtTime(0,audio.currentTime)}noiseGain.gain.cancelScheduledValues(audio.currentTime);noiseGain.gain.setValueAtTime(0,audio.currentTime)}
+function leadSettings(n:number){
+ const k=n-INTRO_BEATS;
+ return {duration:n<INTRO_BEATS?.18:k>=TOTAL?(k===TOTAL+3?.44:.25):k===TOTAL-1?.36:.20,
+  level:n<INTRO_BEATS?.045:k>=TOTAL?.065:.045+.025*Math.min(7,Math.floor(k/8))/7};
+}
+function playLead(n:number,t:number){const v=leadSettings(n);note(0,leadMidi(n),t,v.duration,v.level)}
+function drum(t:number,tone:number,duration:number,level:number){
+ noiseFilter.frequency.setValueAtTime(tone,t);noiseGain.gain.setValueAtTime(0,t);
+ noiseGain.gain.setValueAtTime(level,t+.002);noiseGain.gain.linearRampToValueAtTime(0,t+duration);
+}
+function schedule(){
+ if(!running)return;
+ while(scheduled<INTRO_BEATS+TOTAL+OUTRO_BEATS&&beginning+scheduled*BEAT<audio.currentTime+.12){
+  const n=scheduled++,t=beginning+n*BEAT;playLead(n,t);
+  if(n<INTRO_BEATS){note(1,n<4?60:67,t,.24,.03);note(2,n<4?36:43,t,.22,.12);drum(t,n%2?1800:220,.055,n%2?.035:.025);continue}
+  const k=n-INTRO_BEATS;
+  if(k>=TOTAL){const o=k-TOTAL;note(1,o===3?64:60,t,.44,.04);note(2,36,t,.45,.16);if(o===0)drum(t,220,.12,.055);continue}
+  // The same two-beat rhythmic nucleus grows by song time, independent of combo.
+  const section=Math.min(7,Math.floor(k/8)),growth=section/7,fill=section>=3&&k%8===7;
+  const root=k>=56?36:[36,41,33,43][Math.floor(k/8)%4],chord=k>=56?60:[60,65,57,67][Math.floor(k/8)%4];
+  note(1,chord+(k%2?7:0),t,section>=3?.17:.26,.028+.012*growth);
+  note(2,root,t,k===59?.42:section>=2?.18:.25,.12+.055*growth);
+  drum(t,k%2?1800+growth*700:220+growth*100,k%2?.085:.075,.032+.025*growth);
+  if(section>=1&&(section>=2||k%2===0)){
+   note(2,root+(section>=3&&k%2?12:0),t+.25,.085,.085+.045*growth);
+   if(!fill)drum(t+.25,5500+growth*1000,.035,.020+.010*growth);
+  }
+  if(section>=3)note(1,chord+12-(k%2?5:0),t+.25,.11,.024+.012*growth);
+  if(section>=4&&k%2===1&&!fill)drum(t+.375,6500,.025,.018+.008*growth);
+  if(section>=5&&k%4===3)note(2,root+7,t+.375,.065,.105);
+  if(section>=6&&k%2===1)drum(t+.125,6000,.028,.023);
+  if(fill){drum(t+.25,2100,.055,.04);drum(t+.375,2600,.06,.045)}
+ }
+}
+function silence(){
+ for(let i=0;i<gains.length;i++){gains[i].gain.cancelScheduledValues(audio.currentTime);gains[i].gain.setValueAtTime(0,audio.currentTime);voices[i].frequency.cancelScheduledValues(audio.currentTime)}
+ noiseGain.gain.cancelScheduledValues(audio.currentTime);noiseGain.gain.setValueAtTime(0,audio.currentTime);noiseFilter.frequency.cancelScheduledValues(audio.currentTime);
+}
 async function begin(){if(running&&!resultShown)return;if(running)finish();resultShown=false;start.disabled=true;try{if(!audio)initAudio();await audio.resume();master.gain.setValueAtTime(muted?0:.55,audio.currentTime);silence();judged.clear();successful.clear();extras.clear();secondJump=landing=-10;combo=best=hits=scheduled=0;lastInput=-1;jump=-10;beginning=audio.currentTime+.3;running=true;panel.hidden=true;start.blur();updateStats();timer=window.setInterval(schedule,25);schedule()}catch{message.textContent='音の起動に失敗しました。もう一度お試しください。'}finally{start.disabled=false}}
 function showResult(interrupted=false){resultShown=true;panel.hidden=false;$('h1').textContent=interrupted?'ひと休み。もう一度？':hits>=45?'世界が、色づいた！':'もう一歩、拍に乗ろう。';message.textContent=interrupted?'画面を離れたため停止しました。':`${hits} / 60 HIT · BEST COMBO ${best}`;start.textContent='もう一度あそぶ'}
 function finish(interrupted=false){running=false;clearInterval(timer);silence();showResult(interrupted)}
@@ -27,7 +63,7 @@ function leadMidi(n:number){if(n<INTRO_BEATS)return [72,76,79,76,74,76,79,83][n]
 function articulate(midi:number,now:number){
  gains[0].gain.cancelScheduledValues(now);note(0,midi,now,.055,.10);
  // Keep any already-reserved following beat after the short articulation.
- for(let n=0;n<scheduled;n++){const t=beginning+n*BEAT;if(t>now+.055)note(0,leadMidi(n),t,n<INTRO_BEATS?.18:n>=INTRO_BEATS+TOTAL?(n===INTRO_BEATS+TOTAL+3?.44:.25):.20,n<INTRO_BEATS?.055:n>=INTRO_BEATS+TOTAL?.065:.07)}
+ for(let n=0;n<scheduled;n++){const t=beginning+n*BEAT;if(t>now+.055)playLead(n,t)}
 }
 function tap(){
  if(!running||resultShown)return;const now=audio.currentTime,song=now-beginning-INTRO_BEATS*BEAT-offset;
