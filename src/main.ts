@@ -1,5 +1,6 @@
 import './style.css';
 import {drawBackdrop} from './background';
+import {drawRipples,type Ripple} from './ripple';
 const $ = <T extends HTMLElement>(s:string)=>document.querySelector<T>(s)!;
 const canvas=$<HTMLCanvasElement>('canvas'), g=canvas.getContext('2d')!;
 const panel=$('#panel'), start=$<HTMLButtonElement>('#start'), message=$('#message');
@@ -9,6 +10,7 @@ let audio:AudioContext, master:GainNode, voices:OscillatorNode[]=[], gains:GainN
 let resultShown=false;
 let running=false, muted=false, beginning=0, scheduled=0, combo=0,best=0,hits=0,offset=0,lastInput=-1,jump=-10,flash='', feedbackUntil=0;
 let successful=new Set<number>(), extras=new Set<number>(), landing=-10, secondJump=-10;
+let ripples:Ripple[]=[];
 const reducedMotion=matchMedia('(prefers-reduced-motion: reduce)');
 let judged=new Set<number>(), timer:number, w=390,h=800;
 const melody=[72,76,79,76,74,76,81,79,72,76,79,84,81,79,76,74];
@@ -120,9 +122,9 @@ function silence(){
  for(let i=0;i<gains.length;i++){gains[i].gain.cancelScheduledValues(audio.currentTime);gains[i].gain.setValueAtTime(0,audio.currentTime);voices[i].frequency.cancelScheduledValues(audio.currentTime)}
  noiseGain.gain.cancelScheduledValues(audio.currentTime);noiseGain.gain.setValueAtTime(0,audio.currentTime);noiseFilter.frequency.cancelScheduledValues(audio.currentTime);
 }
-async function begin(){if(running&&!resultShown)return;if(running)finish();resultShown=false;start.disabled=true;try{if(!audio)initAudio();await audio.resume();master.gain.setValueAtTime(muted?0:.55,audio.currentTime);silence();judged.clear();successful.clear();extras.clear();secondJump=landing=-10;harmonyLevels.clear();lastHarmonyLevel=0;combo=best=hits=scheduled=0;lastInput=-1;jump=-10;beginning=audio.currentTime+.05;running=true;panel.hidden=true;start.blur();updateStats();timer=window.setInterval(schedule,25);schedule()}catch{message.textContent='音の起動に失敗しました。もう一度お試しください。'}finally{start.disabled=false}}
+async function begin(){if(running&&!resultShown)return;if(running)finish();resultShown=false;start.disabled=true;try{if(!audio)initAudio();await audio.resume();master.gain.setValueAtTime(muted?0:.55,audio.currentTime);silence();judged.clear();successful.clear();extras.clear();ripples=[];secondJump=landing=-10;harmonyLevels.clear();lastHarmonyLevel=0;combo=best=hits=scheduled=0;lastInput=-1;jump=-10;beginning=audio.currentTime+.05;running=true;panel.hidden=true;start.blur();updateStats();timer=window.setInterval(schedule,25);schedule()}catch{message.textContent='音の起動に失敗しました。もう一度お試しください。'}finally{start.disabled=false}}
 function showResult(interrupted=false){resultShown=true;panel.hidden=false;$('h1').textContent=interrupted?'ひと休み。もう一度？':hits>=45?'世界が、色づいた！':'もう一歩、拍に乗ろう。';message.textContent=interrupted?'画面を離れたため停止しました。':`${hits} / 60 HIT · BEST COMBO ${best}`;start.textContent='もう一度あそぶ'}
-function finish(interrupted=false){running=false;clearInterval(timer);silence();showResult(interrupted)}
+function finish(interrupted=false){ripples=[];running=false;clearInterval(timer);silence();showResult(interrupted)}
 function leadMidi(n:number){
  if(n<INTRO_BEATS)return [72,76,79,76,74,76,79,83][n];const k=n-INTRO_BEATS;
  if(k>=TOTAL)return [79,76,74,72][k-TOTAL];
@@ -137,6 +139,14 @@ function articulate(midi:number,now:number){
  // Keep any already-reserved following beat after the short articulation.
  for(let n=0;n<scheduled;n++){const t=beginning+n*BEAT;if(t>now+.055)playLead(n,t)}
 }
+function ripple(now:number){
+ const stage=stages.reduce((v,s,i)=>combo>=s.at?i:v,0);
+ const p=Math.max(0,Math.min(1,(now-jump)/Math.max(.05,landing-jump)));
+ const scale=Math.min(1,w/390,h/664)*WORLD_SCALE;
+ const y=h*.64-6*WORLD_SCALE-Math.sin(p*Math.PI)*(reducedMotion.matches?24:64)*WORLD_SCALE-16*scale;
+ ripples.push({time:now,x:.28,y:y/h,stage,color:stages[stage].color,life:reducedMotion.matches?.45:1.15+stage*.025});
+ ripples=ripples.slice(-3);
+}
 function tap(){
  if(!running||resultShown)return;const now=audio.currentTime,song=now-beginning-INTRO_BEATS*BEAT-offset;
  if(song < -WINDOW||song>(TOTAL-1)*BEAT+WINDOW)return;
@@ -147,7 +157,7 @@ function tap(){
  }
  const prior=Math.floor(song/BEAT),offError=Math.abs(song-(prior+.5)*BEAT);
  if(prior>=0&&prior<TOTAL-1&&offError<=.075){
-  if(successful.has(prior)&&!extras.has(prior)&&now<landing-.04){extras.add(prior);lastInput=now;secondJump=now;flash='DOUBLE HOP';feedbackUntil=now+.22;articulate(chordToneNear(leadMidi(prior+INTRO_BEATS)+19,Math.max(0,Math.min(TOTAL-1,Math.floor((now-beginning-INTRO_BEATS*BEAT)/BEAT)))),now)}
+  if(successful.has(prior)&&!extras.has(prior)&&now<landing-.04){extras.add(prior);lastInput=now;secondJump=now;ripple(now);flash='DOUBLE HOP';feedbackUntil=now+.22;articulate(chordToneNear(leadMidi(prior+INTRO_BEATS)+19,Math.max(0,Math.min(TOTAL-1,Math.floor((now-beginning-INTRO_BEATS*BEAT)/BEAT)))),now)}
   return; // Optional offbeats never punish or award score.
  }
  if(now-lastInput<.08)return;lastInput=now;
@@ -187,6 +197,8 @@ function draw(){
  g.fillStyle=style.bg;g.fillRect(0,0,w,h);
  // All scenery remains behind the beat rings and uses the audio clock.
  drawBackdrop(g,w,h,stage,accent,now-beginning,gentle);
+ ripples=ripples.filter(wave=>now-wave.time<wave.life);
+ drawRipples(g,w,h,now,ripples,gentle);
  const y=h*.64,spacing=w*.22,x=w*.28;
  g.strokeStyle=accent+'0b';g.lineWidth=1;for(let i=0;i<14;i++){g.beginPath();g.moveTo(0,y+i*22);g.lineTo(w,y+i*22);g.stroke()}
  if(stage>=6){g.strokeStyle=accent+'12';for(let i=-3;i<5;i++){g.beginPath();g.moveTo(w*.5,y);g.lineTo(w*.5+i*w*.3,h);g.stroke()}}
