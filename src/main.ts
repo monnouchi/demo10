@@ -1,4 +1,5 @@
 import './style.css';
+import {drawBackdrop} from './background';
 const $ = <T extends HTMLElement>(s:string)=>document.querySelector<T>(s)!;
 const canvas=$<HTMLCanvasElement>('canvas'), g=canvas.getContext('2d')!;
 const panel=$('#panel'), start=$<HTMLButtonElement>('#start'), message=$('#message');
@@ -170,10 +171,8 @@ function draw(){
  const stage=stages.reduce((v,s,i)=>combo>=s.at?i:v,0),style=stages[stage],accent=style.color;
  const gentle=reducedMotion.matches;
  g.fillStyle=style.bg;g.fillRect(0,0,w,h);
- // Effects stay behind the fixed beat target. Fixed counts bound rendering cost.
- if(stage>=3){g.fillStyle=accent+'12';for(let i=0;i<3;i++){const drift=gentle?0:Math.sin(now*.25+i)*14;g.beginPath();g.moveTo(-40,h*.47+i*30+drift);g.quadraticCurveTo(w*.5,h*.31+i*24,w+40,h*.48+i*30);g.lineTo(w+40,h*.60+i*30);g.quadraticCurveTo(w*.5,h*.46+i*24,-40,h*.61+i*30);g.fill()}}
- if(stage>=4){const grad=g.createRadialGradient(w*.7,h*.35,10,w*.7,h*.35,w*.7);grad.addColorStop(0,accent+'20');grad.addColorStop(1,accent+'00');g.fillStyle=grad;g.fillRect(0,100,w,h-220)}
- if(stage>=5){g.fillStyle=accent+'55';for(let i=0;i<18;i++){const px=(i*71+19)%w,py=h*.22+(i*53)%(h*.24);g.fillRect(px,py,gentle?2:2+Math.sin(now*.7+i),2)}}
+ // All scenery remains behind the beat rings and uses the audio clock.
+ drawBackdrop(g,w,h,stage,accent,now-beginning,gentle);
  const y=h*.64,spacing=w*.22,x=w*.28;
  g.strokeStyle=accent+'0b';g.lineWidth=1;for(let i=0;i<14;i++){g.beginPath();g.moveTo(0,y+i*22);g.lineTo(w,y+i*22);g.stroke()}
  if(stage>=6){g.strokeStyle=accent+'12';for(let i=-3;i<5;i++){g.beginPath();g.moveTo(w*.5,y);g.lineTo(w*.5+i*w*.3,h);g.stroke()}}
