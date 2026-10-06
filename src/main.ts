@@ -38,10 +38,16 @@ const basicTriads:readonly (readonly number[])[]=[
 const sevenths=[71,64,60,65,71,60,67,69,64,63,65,65,67,60,65];
 const ninths=[74,67,64,69,74,64,71,72,67,67,60,69,71,64,69];
 let harmonyLevels=new Map<number,number>(),lastHarmonyLevel=0;
+function musicStage(){return combo>=18?3:combo>=8?2:combo>=4?1:0}
+function breakCombo(){
+ combo=0;harmonyLevels.clear();lastHarmonyLevel=0;
+ const now=audio.currentTime;
+ for(let i=0;i<3;i++){const param=gains[i].gain;const value=param.value;param.cancelScheduledValues(now);param.setValueAtTime(value,now);param.linearRampToValueAtTime(0,now+.03);voices[i].frequency.cancelScheduledValues(now)}
+}
 function rewardLevel(){return combo>=48?4:combo>=36?3:combo>=18?2:combo>=8?1:0}
 function latchHarmony(k:number){
  if(k>=0&&k<TOTAL&&k%4===0&&!harmonyLevels.has(k/4)){
-  lastHarmonyLevel+=Math.sign(rewardLevel()-lastHarmonyLevel);harmonyLevels.set(k/4,lastHarmonyLevel);
+  lastHarmonyLevel=rewardLevel();harmonyLevels.set(k/4,lastHarmonyLevel);
  }
 }
 function toneNear(target:number,tones:readonly number[]){
@@ -70,7 +76,7 @@ function initAudio(){
  const b=audio.createBuffer(1,audio.sampleRate,audio.sampleRate),data=b.getChannelData(0);let seed=17;for(let i=0;i<data.length;i++){seed=(seed*16807)%2147483647;data[i]=seed/1073741824-1}
  noise=audio.createBufferSource();noise.buffer=b;noise.loop=true;noiseGain=audio.createGain();noiseGain.gain.value=0;noiseFilter=audio.createBiquadFilter();noiseFilter.type='bandpass';noiseFilter.Q.value=.7;noise.connect(noiseFilter).connect(noiseGain).connect(master);noise.start();
 }
-function note(voice:number,midi:number,t:number,duration:number,level:number){const gain=gains[voice].gain;gain.setValueAtTime(0,t);voices[voice].frequency.setValueAtTime(440*2**((midi-69)/12),t);gain.setValueAtTime(level,t+.002);gain.linearRampToValueAtTime(0,t+duration)}
+function note(voice:number,midi:number,t:number,duration:number,level:number){if(musicStage()<(voice===2?1:voice===1?2:3))return;const gain=gains[voice].gain;gain.setValueAtTime(0,t);voices[voice].frequency.setValueAtTime(440*2**((midi-69)/12),t);gain.setValueAtTime(level,t+.002);gain.linearRampToValueAtTime(0,t+duration)}
 function leadSettings(n:number){
  const k=n-INTRO_BEATS;
  return {duration:n<INTRO_BEATS?.18:k>=TOTAL?(k===TOTAL+3?.44:.25):k===TOTAL-1?.36:.20,
@@ -85,9 +91,9 @@ function schedule(){
  if(!running)return;
  while(scheduled<INTRO_BEATS+TOTAL+OUTRO_BEATS&&beginning+scheduled*BEAT<audio.currentTime+.12){
   const n=scheduled++,t=beginning+n*BEAT;latchHarmony(n-INTRO_BEATS);playLead(n,t);
-  if(n<INTRO_BEATS){const intro=harmonyAt(n-INTRO_BEATS);note(1,intro.inner[n%4],t,.24,.03);note(2,intro.bass,t,.22,.12);drum(t,n%2?1800:220,.055,n%2?.035:.025);continue}
+  if(n<INTRO_BEATS){drum(t,n%2?1800:220,.055,n%2?.035:.025);continue}
   const k=n-INTRO_BEATS;
-  if(k>=TOTAL){const o=k-TOTAL;note(1,[64,67,62,64][o],t,.44,.04);note(2,36,t,.45,.16);if(o===0)drum(t,220,.12,.055);continue}
+  if(k>=TOTAL){const o=k-TOTAL;note(1,[64,67,62,64][o],t,.44,.04);note(2,36,t,.45,.16);drum(t,o===0?220:1800,.08,o===0?.055:.025);continue}
   // The same two-beat rhythmic nucleus grows by song time, independent of combo.
   const section=Math.min(7,Math.floor(k/8)),growth=section/7,fill=section>=3&&k%8===7;
   const harmony=harmonyAt(k),root=harmony.bass;
@@ -120,6 +126,8 @@ function leadMidi(n:number){
  return k%2===0||k===TOTAL-1?chordToneNear(motif,k):motif;
 }
 function articulate(midi:number,now:number){
+ // A single noise articulation keeps early taps playable without tonal layers.
+ if(musicStage()<3){drum(now,musicStage()===0?3200:4200,.03,.04);return}
  gains[0].gain.cancelScheduledValues(now);note(0,midi,now,.055,.10);
  // Keep any already-reserved following beat after the short articulation.
  for(let n=0;n<scheduled;n++){const t=beginning+n*BEAT;if(t>now+.055)playLead(n,t)}
@@ -138,7 +146,7 @@ function tap(){
   return; // Optional offbeats never punish or award score.
  }
  if(now-lastInput<.08)return;lastInput=now;
- if(n>=0&&n<TOTAL&&!judged.has(n)){combo=0;flash='拍を待とう';feedbackUntil=now+.25;updateStats()}
+ if(n>=0&&n<TOTAL&&!judged.has(n)){breakCombo();flash='拍を待とう';feedbackUntil=now+.25;updateStats()}
 }
 function updateStats(){$('#score').textContent=`${String(hits).padStart(2,'0')} / 60`;$('#combo').textContent=`COMBO ${combo}`}
 start.addEventListener('click',begin);$('main').addEventListener('pointerdown',e=>{if((e.target as HTMLElement).closest('button,label,#panel'))return;e.preventDefault();tap()});window.addEventListener('keydown',e=>{if((e.code==='Space'||e.code==='Enter')&&!(e.target instanceof HTMLInputElement)&&!(e.target instanceof HTMLButtonElement)){e.preventDefault();if(e.repeat)return;if(running&&!resultShown)tap();else void begin()}});
@@ -210,7 +218,7 @@ function draw(){
   else{
    $('#hint').textContent=`${stage+1} / 8 · ${style.name}`;
    if(now<feedbackUntil)g.fillText(flash,w/2,h*.32);
-   for(let n=0;n<TOTAL;n++){if(t>n*BEAT+WINDOW+offset&&!judged.has(n)){judged.add(n);combo=0;updateStats()}}
+   for(let n=0;n<TOTAL;n++){if(t>n*BEAT+WINDOW+offset&&!judged.has(n)){judged.add(n);if(combo>0)breakCombo();updateStats()}}
    if(t>=TOTAL*BEAT&&!resultShown)showResult();if(resultShown)$('#hint').textContent='FINALE · おつかれさま';if(t>=(TOTAL+OUTRO_BEATS)*BEAT)finish();
   }
  }
