@@ -56,10 +56,11 @@ function harmonyAt(k:number):Harmony{
  const triad=basicTriads[index];let tones=[...triad];
  if(level>=1)tones.push(sevenths[index]);if(level>=2)tones.push(ninths[index]);
  if(index===10&&level>=2)tones=tones.filter(t=>t%12!==11); // sus4 resolves to B in the next G7 bar.
- if(index===7&&level>=3)tones.push(76); // restrained Lydian colour in one floating bar.
+ const colorTone=index===7?76:index===9?62:index===10||index===11||index===14?64:undefined;
+ if(level>=3&&colorTone!==undefined)tones.push(colorTone);
  const third=index===10&&level>=2?60:toneNear(64,[triad[1]]),fifth=toneNear(64,[triad[2]]);
  const seventh=toneNear(64,[sevenths[index]]),ninth=toneNear(64,[ninths[index]]);
- const inner=level===0?[third,fifth,third,toneNear(64,[triad[0]])]:level===1?[third,seventh,third,fifth]:[third,seventh,index===7&&level>=3?64:ninth,third];
+ const inner=level===0?[third,fifth,third,toneNear(64,[triad[0]])]:level===1?[third,seventh,third,fifth]:[third,seventh,level>=3&&colorTone!==undefined?toneNear(64,[colorTone]):ninth,third];
  return {name:base.name,bass:base.bass,inner,tones};
 }
 function chordToneNear(target:number,k:number){return toneNear(target,harmonyAt(k).tones)}
