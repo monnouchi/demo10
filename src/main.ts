@@ -91,7 +91,12 @@ function schedule(){
  if(!running)return;
  while(scheduled<INTRO_BEATS+TOTAL+OUTRO_BEATS&&beginning+scheduled*BEAT<audio.currentTime+.12){
   const n=scheduled++,t=beginning+n*BEAT;latchHarmony(n-INTRO_BEATS);playLead(n,t);
-  if(n<INTRO_BEATS){drum(t,n%2?1800:220,.055,n%2?.035:.025);continue}
+  if(n<INTRO_BEATS){
+   // Audible midrange ticks on every beat; the last four match the visual count.
+   drum(t,n===7?2400:n>=4?1800:1200,.10,n>=4?.10:.085);
+   if(n===7){drum(t+.25,3400,.055,.065);drum(t+.375,4600,.055,.075)}
+   continue;
+  }
   const k=n-INTRO_BEATS;
   if(k>=TOTAL){const o=k-TOTAL;note(1,[64,67,62,64][o],t,.44,.04);note(2,36,t,.45,.16);drum(t,o===0?220:1800,.08,o===0?.055:.025);continue}
   // The same two-beat rhythmic nucleus grows by song time, independent of combo.
@@ -99,7 +104,7 @@ function schedule(){
   const harmony=harmonyAt(k),root=harmony.bass;
   note(1,harmony.inner[k%4],t,section>=3?.17:.26,.028+.012*growth);
   note(2,root,t,k===59?.42:section>=2?.18:.25,.12+.055*growth);
-  drum(t,k%2?1800+growth*700:220+growth*100,k%2?.085:.075,.032+.025*growth);
+  drum(t,k===0?1200:k%2?1800+growth*700:220+growth*100,k===0?.12:k%2?.085:.075,k===0?.105:.032+.025*growth);
   if(section>=1&&(section>=2||k%2===0)){
    note(2,root+(section>=3&&k%2?12:0),t+.25,.085,.085+.045*growth);
    if(!fill)drum(t+.25,5500+growth*1000,.035,.020+.010*growth);
@@ -115,7 +120,7 @@ function silence(){
  for(let i=0;i<gains.length;i++){gains[i].gain.cancelScheduledValues(audio.currentTime);gains[i].gain.setValueAtTime(0,audio.currentTime);voices[i].frequency.cancelScheduledValues(audio.currentTime)}
  noiseGain.gain.cancelScheduledValues(audio.currentTime);noiseGain.gain.setValueAtTime(0,audio.currentTime);noiseFilter.frequency.cancelScheduledValues(audio.currentTime);
 }
-async function begin(){if(running&&!resultShown)return;if(running)finish();resultShown=false;start.disabled=true;try{if(!audio)initAudio();await audio.resume();master.gain.setValueAtTime(muted?0:.55,audio.currentTime);silence();judged.clear();successful.clear();extras.clear();secondJump=landing=-10;harmonyLevels.clear();lastHarmonyLevel=0;combo=best=hits=scheduled=0;lastInput=-1;jump=-10;beginning=audio.currentTime+.3;running=true;panel.hidden=true;start.blur();updateStats();timer=window.setInterval(schedule,25);schedule()}catch{message.textContent='音の起動に失敗しました。もう一度お試しください。'}finally{start.disabled=false}}
+async function begin(){if(running&&!resultShown)return;if(running)finish();resultShown=false;start.disabled=true;try{if(!audio)initAudio();await audio.resume();master.gain.setValueAtTime(muted?0:.55,audio.currentTime);silence();judged.clear();successful.clear();extras.clear();secondJump=landing=-10;harmonyLevels.clear();lastHarmonyLevel=0;combo=best=hits=scheduled=0;lastInput=-1;jump=-10;beginning=audio.currentTime+.05;running=true;panel.hidden=true;start.blur();updateStats();timer=window.setInterval(schedule,25);schedule()}catch{message.textContent='音の起動に失敗しました。もう一度お試しください。'}finally{start.disabled=false}}
 function showResult(interrupted=false){resultShown=true;panel.hidden=false;$('h1').textContent=interrupted?'ひと休み。もう一度？':hits>=45?'世界が、色づいた！':'もう一歩、拍に乗ろう。';message.textContent=interrupted?'画面を離れたため停止しました。':`${hits} / 60 HIT · BEST COMBO ${best}`;start.textContent='もう一度あそぶ'}
 function finish(interrupted=false){running=false;clearInterval(timer);silence();showResult(interrupted)}
 function leadMidi(n:number){
@@ -214,10 +219,15 @@ function draw(){
  if(stage>=7){g.fillStyle=accent;g.fillRect(-9,-42,3,3);g.fillRect(0,-45,3,3);g.fillRect(9,-42,3,3)}g.restore();
  g.textAlign='center';g.fillStyle=accent;g.font='bold 16px monospace';
  if(running){
-  if(t<0){g.fillText(t < -4*BEAT?'LISTEN':String(Math.max(1,Math.ceil(-t/BEAT))),w/2,h*.32);$('#hint').textContent='INTRO · 拍を聴こう → 4・3・2・1'}
+  if(t<0){
+   const counting=now>=beginning&&t>=-4*BEAT;
+   g.font=counting?'bold 36px monospace':'bold 16px monospace';
+   g.fillText(counting?String(Math.max(1,Math.ceil(-t/BEAT))):'LISTEN',w/2,h*.32);
+   $('#hint').textContent=counting?(t>=-BEAT?'次の拍で TAP!':'4 → 3 → 2 → 1 → TAP'):'INTRO · 拍を聴こう';
+  }
   else{
    $('#hint').textContent=`${stage+1} / 8 · ${style.name}`;
-   if(now<feedbackUntil)g.fillText(flash,w/2,h*.32);
+   if(now<feedbackUntil)g.fillText(flash,w/2,h*.32);else if(t<.35){g.font='bold 28px monospace';g.fillText('TAP!',w/2,h*.32)}
    for(let n=0;n<TOTAL;n++){if(t>n*BEAT+WINDOW+offset&&!judged.has(n)){judged.add(n);if(combo>0)breakCombo();updateStats()}}
    if(t>=TOTAL*BEAT&&!resultShown)showResult();if(resultShown)$('#hint').textContent='FINALE · おつかれさま';if(t>=(TOTAL+OUTRO_BEATS)*BEAT)finish();
   }
