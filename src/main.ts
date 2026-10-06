@@ -2,6 +2,7 @@ import './style.css';
 const $ = <T extends HTMLElement>(s:string)=>document.querySelector<T>(s)!;
 const canvas=$<HTMLCanvasElement>('canvas'), g=canvas.getContext('2d')!;
 const panel=$('#panel'), start=$<HTMLButtonElement>('#start'), message=$('#message');
+const WORLD_SCALE=.85;
 const BEAT=.5, INTRO_BEATS=8, OUTRO_BEATS=4, TOTAL=60, WINDOW=.14;
 let audio:AudioContext, master:GainNode, voices:OscillatorNode[]=[], gains:GainNode[]=[], noise:AudioBufferSourceNode, noiseGain:GainNode;
 let resultShown=false;
@@ -49,7 +50,15 @@ start.addEventListener('click',begin);$('main').addEventListener('pointerdown',e
 $('#mute').addEventListener('click',()=>{muted=!muted;if(master)master.gain.setTargetAtTime(muted?0:.55,audio.currentTime,.01);$('#mute').textContent=muted?'♪ OFF':'♪ ON';$('#mute').setAttribute('aria-label',muted?'音をオン':'音をミュート');$('#mute').blur()});
 $<HTMLInputElement>('#offset').addEventListener('input',e=>{offset=Number((e.target as HTMLInputElement).value)/1000;$('#value').textContent=`${offset*1000}ms`;try{localStorage.setItem('pulse-offset',String(offset))}catch{}});try{offset=Math.max(-.15,Math.min(.15,Number(localStorage.getItem('pulse-offset'))||0));$<HTMLInputElement>('#offset').value=String(offset*1000);$('#value').textContent=`${offset*1000}ms`}catch{}
 document.addEventListener('visibilitychange',()=>{if(document.hidden&&running)finish(true)});
-function resize(){w=canvas.clientWidth;h=canvas.clientHeight;const d=Math.min(devicePixelRatio,2);canvas.width=w*d;canvas.height=h*d;g.setTransform(d,0,0,d,0,0)}window.addEventListener('resize',resize);resize();
+let pixelX=1,pixelY=1;
+function resize(){
+ const bounds=$('main').getBoundingClientRect();w=Math.max(1,bounds.width);h=Math.max(1,bounds.height);
+ // Explicit CSS dimensions isolate layout from the canvas intrinsic bitmap size.
+ canvas.style.width=`${w}px`;canvas.style.height=`${h}px`;
+ const d=Math.min(devicePixelRatio,2);canvas.width=Math.round(w*d);canvas.height=Math.round(h*d);
+ pixelX=canvas.width/w;pixelY=canvas.height/h;g.setTransform(pixelX,0,0,pixelY,0,0);
+}
+window.addEventListener('resize',resize);new ResizeObserver(resize).observe($('main'));resize();
 const stages=[
  {at:0,name:'PIXEL',color:'#f3f5e9',bg:'#151823'},
  {at:4,name:'MINT',color:'#c1ff88',bg:'#142421'},
@@ -62,6 +71,8 @@ const stages=[
 ];
 function draw(){
  requestAnimationFrame(draw);
+ // Start every frame in CSS coordinates; character transforms cannot accumulate.
+ g.setTransform(pixelX,0,0,pixelY,0,0);
  const now=audio?.currentTime??0,t=running?now-beginning-INTRO_BEATS*BEAT:0,progress=Math.max(0,t/BEAT);
  const stage=stages.reduce((v,s,i)=>combo>=s.at?i:v,0),style=stages[stage],accent=style.color;
  const gentle=reducedMotion.matches;
@@ -70,23 +81,24 @@ function draw(){
  if(stage>=3){g.fillStyle=accent+'12';for(let i=0;i<3;i++){const drift=gentle?0:Math.sin(now*.25+i)*14;g.beginPath();g.moveTo(-40,h*.47+i*30+drift);g.quadraticCurveTo(w*.5,h*.31+i*24,w+40,h*.48+i*30);g.lineTo(w+40,h*.60+i*30);g.quadraticCurveTo(w*.5,h*.46+i*24,-40,h*.61+i*30);g.fill()}}
  if(stage>=4){const grad=g.createRadialGradient(w*.7,h*.35,10,w*.7,h*.35,w*.7);grad.addColorStop(0,accent+'20');grad.addColorStop(1,accent+'00');g.fillStyle=grad;g.fillRect(0,100,w,h-220)}
  if(stage>=5){g.fillStyle=accent+'55';for(let i=0;i<18;i++){const px=(i*71+19)%w,py=h*.22+(i*53)%(h*.24);g.fillRect(px,py,gentle?2:2+Math.sin(now*.7+i),2)}}
- const y=h*.64,spacing=w*.28,x=w*.34;
+ const y=h*.64,spacing=w*.22,x=w*.28;
  g.strokeStyle=accent+'0b';g.lineWidth=1;for(let i=0;i<14;i++){g.beginPath();g.moveTo(0,y+i*22);g.lineTo(w,y+i*22);g.stroke()}
  if(stage>=6){g.strokeStyle=accent+'12';for(let i=-3;i<5;i++){g.beginPath();g.moveTo(w*.5,y);g.lineTo(w*.5+i*w*.3,h);g.stroke()}}
- for(let i=-2;i<6;i++){const px=x+(i-(progress%1))*spacing;g.fillStyle=i===1?accent:'#515667';g.fillRect(px-26,y+Math.sin(i)*9,52,10);if(stage>=4){g.fillStyle=accent+'13';g.fillRect(px-26,y+10,52,h-y)}}
+ for(let i=-2;i<6;i++){const px=x+(i-(progress%1))*spacing;g.fillStyle=i===1?accent:'#515667';g.fillRect(px-26*WORLD_SCALE,y+Math.sin(i)*9*WORLD_SCALE,52*WORLD_SCALE,10*WORLD_SCALE);if(stage>=4){g.fillStyle=accent+'13';g.fillRect(px-26*WORLD_SCALE,y+10*WORLD_SCALE,52*WORLD_SCALE,h-y)}}
  const phase=((t%BEAT)+BEAT)%BEAT/BEAT;
  // Beat rings always retain position, contrast and timing in all stages.
- g.strokeStyle=accent;g.lineWidth=3;g.beginPath();g.arc(x,y-70,18+(1-phase)*40,0,Math.PI*2);g.stroke();g.globalAlpha=.4;g.beginPath();g.arc(x,y-70,18,0,Math.PI*2);g.stroke();g.globalAlpha=1;
+ g.strokeStyle=accent;g.lineWidth=3;g.beginPath();g.arc(x,y-70*WORLD_SCALE,(18+(1-phase)*(Math.min(58,w*.15)-18))*WORLD_SCALE,0,Math.PI*2);g.stroke();g.globalAlpha=.4;g.beginPath();g.arc(x,y-70*WORLD_SCALE,18*WORLD_SCALE,0,Math.PI*2);g.stroke();g.globalAlpha=1;
  const introMotion=running&&t<0&&now>=beginning,age=introMotion?((now-beginning)%BEAT):now-jump;
  const duration=introMotion?BEAT:Math.max(.05,landing-jump),p=Math.min(1,Math.max(0,age/duration));
  const airborne=age>=0&&age<duration,flight=airborne?Math.sin(p*Math.PI):0;
  const extra=now>=secondJump&&now<landing&&secondJump>jump?Math.sin((now-secondJump)/(landing-secondJump)*Math.PI):0;
- const jumpHeight=gentle?flight*24+extra*10:flight*64+extra*34;
+ const jumpHeight=(gentle?flight*24+extra*10:flight*64+extra*34)*WORLD_SCALE;
  const variant=Math.floor(hits/4)%3;
- g.save();g.translate(x,y-24-jumpHeight);
+ g.save();g.translate(x,y-6*WORLD_SCALE-jumpHeight);
+ const characterScale=Math.min(1,w/390,h/664)*WORLD_SCALE;g.scale(characterScale,characterScale);
  if(!gentle&&airborne){if(stage>=5&&variant===2)g.rotate(Math.sin(p*Math.PI)*.55);else if(stage>=4&&variant===1)g.rotate(p*Math.PI*2);else if(stage>=2)g.rotate(Math.sin(p*Math.PI)*.18*(variant===0?1:-1));if(extra&&stage>=6)g.rotate(extra*.35)}
  const squash=gentle?0:airborne?Math.sin(p*Math.PI)*.10:(now>=landing&&now-landing<.12?-.15*Math.sin((now-landing)/.12*Math.PI):0);
- g.scale(1-squash,1+squash);
+ g.scale(1-Math.max(-.15,Math.min(.10,squash)),1+Math.max(-.15,Math.min(.10,squash)));
  g.fillStyle=accent;
  if(stage>=4&&!gentle){g.shadowColor=accent;g.shadowBlur=stage>=7?20:12}
  // Same round body, little tuft, eyes and short limbs throughout the evolution.
