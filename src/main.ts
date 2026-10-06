@@ -11,6 +11,57 @@ let successful=new Set<number>(), extras=new Set<number>(), landing=-10, secondJ
 const reducedMotion=matchMedia('(prefers-reduced-motion: reduce)');
 let judged=new Set<number>(), timer:number, w=390,h=800;
 const melody=[72,76,79,76,74,76,81,79,72,76,79,84,81,79,76,74];
+type Harmony={name:string,bass:number,inner:readonly number[],tones:readonly number[]};
+const harmonyPath:readonly Harmony[]=[
+ {name:'Cadd9',bass:36,inner:[64,62,67,64],tones:[60,64,67,74]},
+ {name:'Fmaj7',bass:41,inner:[64,65,69,64],tones:[60,64,65,69]},
+ {name:'Dm7',bass:38,inner:[65,60,69,65],tones:[60,62,65,69]},
+ {name:'G7',bass:43,inner:[65,59,62,65],tones:[55,59,62,65]},
+ {name:'Cmaj7',bass:36,inner:[64,59,67,64],tones:[60,64,67,71]},
+ {name:'Dm9',bass:38,inner:[65,64,60,65],tones:[60,62,64,65,69]},
+ {name:'Am/E',bass:40,inner:[64,60,67,64],tones:[57,60,64,67]},
+ {name:'Bbmaj7#11',bass:34,inner:[62,65,69,64],tones:[58,62,65,69,76]},
+ {name:'F/A',bass:33,inner:[65,64,60,65],tones:[60,64,65,69]},
+ {name:'Fm7/Ab',bass:32,inner:[65,63,60,65],tones:[60,63,65,68]},
+ {name:'G7sus4',bass:43,inner:[65,60,62,65],tones:[55,60,62,65]},
+ {name:'G7',bass:43,inner:[65,59,62,65],tones:[55,59,62,65]},
+ {name:'Am7',bass:33,inner:[64,67,60,64],tones:[57,60,64,67]},
+ {name:'Dm7',bass:38,inner:[65,60,69,65],tones:[60,62,65,69]},
+ {name:'G7',bass:43,inner:[65,59,62,65],tones:[55,59,62,65]},
+];
+const basicTriads:readonly (readonly number[])[]=[
+ [60,64,67],[65,69,72],[62,65,69],[55,59,62],[60,64,67],
+ [62,65,69],[57,60,64],[58,62,65],[65,69,72],[65,68,72],
+ [55,59,62],[55,59,62],[57,60,64],[62,65,69],[55,59,62],
+];
+const sevenths=[71,64,60,65,71,60,67,69,64,63,65,65,67,60,65];
+const ninths=[74,67,64,69,74,64,71,72,67,67,60,69,71,64,69];
+let harmonyLevels=new Map<number,number>(),lastHarmonyLevel=0;
+function rewardLevel(){return combo>=48?4:combo>=36?3:combo>=18?2:combo>=8?1:0}
+function latchHarmony(k:number){
+ if(k>=0&&k<TOTAL&&k%4===0&&!harmonyLevels.has(k/4)){
+  lastHarmonyLevel+=Math.sign(rewardLevel()-lastHarmonyLevel);harmonyLevels.set(k/4,lastHarmonyLevel);
+ }
+}
+function toneNear(target:number,tones:readonly number[]){
+ let best=target,bestDistance=Infinity;
+ for(let midi=target-12;midi<=target+12;midi++){if(tones.some(t=>t%12===midi%12)&&Math.abs(midi-target)<bestDistance){best=midi;bestDistance=Math.abs(midi-target)}}return best;
+}
+function harmonyAt(k:number):Harmony{
+ if(k<0)return k< -4?{name:'C',bass:36,inner:[64,67,60,64],tones:[60,64,67]}:harmonyPath[11];
+ // Resolve every ending to a clear tonic, even after a rewarded suspension.
+ if(k>=TOTAL-1)return {name:'C',bass:36,inner:[64,67,60,64],tones:[60,64,67]};
+ const index=Math.floor(k/4),base=harmonyPath[index],level=harmonyLevels.get(index)??lastHarmonyLevel;
+ const triad=basicTriads[index];let tones=[...triad];
+ if(level>=1)tones.push(sevenths[index]);if(level>=2)tones.push(ninths[index]);
+ if(index===10&&level>=2)tones=tones.filter(t=>t%12!==11); // sus4 resolves to B in the next G7 bar.
+ if(index===7&&level>=3)tones.push(76); // restrained Lydian colour in one floating bar.
+ const third=index===10&&level>=2?60:toneNear(64,[triad[1]]),fifth=toneNear(64,[triad[2]]);
+ const seventh=toneNear(64,[sevenths[index]]),ninth=toneNear(64,[ninths[index]]);
+ const inner=level===0?[third,fifth,third,toneNear(64,[triad[0]])]:level===1?[third,seventh,third,fifth]:[third,seventh,index===7&&level>=3?64:ninth,third];
+ return {name:base.name,bass:base.bass,inner,tones};
+}
+function chordToneNear(target:number,k:number){return toneNear(target,harmonyAt(k).tones)}
 function initAudio(){
  audio=new AudioContext(); master=audio.createGain();master.gain.value=.55;master.connect(audio.destination);
  for(let i=0;i<3;i++){const o=audio.createOscillator(),v=audio.createGain();o.type=i===2?'triangle':'square';v.gain.value=0;o.connect(v).connect(master);o.start();voices.push(o);gains.push(v)}
@@ -31,23 +82,23 @@ function drum(t:number,tone:number,duration:number,level:number){
 function schedule(){
  if(!running)return;
  while(scheduled<INTRO_BEATS+TOTAL+OUTRO_BEATS&&beginning+scheduled*BEAT<audio.currentTime+.12){
-  const n=scheduled++,t=beginning+n*BEAT;playLead(n,t);
-  if(n<INTRO_BEATS){note(1,n<4?60:67,t,.24,.03);note(2,n<4?36:43,t,.22,.12);drum(t,n%2?1800:220,.055,n%2?.035:.025);continue}
+  const n=scheduled++,t=beginning+n*BEAT;latchHarmony(n-INTRO_BEATS);playLead(n,t);
+  if(n<INTRO_BEATS){const intro=harmonyAt(n-INTRO_BEATS);note(1,intro.inner[n%4],t,.24,.03);note(2,intro.bass,t,.22,.12);drum(t,n%2?1800:220,.055,n%2?.035:.025);continue}
   const k=n-INTRO_BEATS;
-  if(k>=TOTAL){const o=k-TOTAL;note(1,o===3?64:60,t,.44,.04);note(2,36,t,.45,.16);if(o===0)drum(t,220,.12,.055);continue}
+  if(k>=TOTAL){const o=k-TOTAL;note(1,[64,67,62,64][o],t,.44,.04);note(2,36,t,.45,.16);if(o===0)drum(t,220,.12,.055);continue}
   // The same two-beat rhythmic nucleus grows by song time, independent of combo.
   const section=Math.min(7,Math.floor(k/8)),growth=section/7,fill=section>=3&&k%8===7;
-  const root=k>=56?36:[36,41,33,43][Math.floor(k/8)%4],chord=k>=56?60:[60,65,57,67][Math.floor(k/8)%4];
-  note(1,chord+(k%2?7:0),t,section>=3?.17:.26,.028+.012*growth);
+  const harmony=harmonyAt(k),root=harmony.bass;
+  note(1,harmony.inner[k%4],t,section>=3?.17:.26,.028+.012*growth);
   note(2,root,t,k===59?.42:section>=2?.18:.25,.12+.055*growth);
   drum(t,k%2?1800+growth*700:220+growth*100,k%2?.085:.075,.032+.025*growth);
   if(section>=1&&(section>=2||k%2===0)){
    note(2,root+(section>=3&&k%2?12:0),t+.25,.085,.085+.045*growth);
    if(!fill)drum(t+.25,5500+growth*1000,.035,.020+.010*growth);
   }
-  if(section>=3)note(1,chord+12-(k%2?5:0),t+.25,.11,.024+.012*growth);
+  if(section>=3)note(1,harmony.inner[(k+1)%4]+((harmonyLevels.get(Math.floor(k/4))??0)>=4?12:0),t+.25,.11,.024+.012*growth);
   if(section>=4&&k%2===1&&!fill)drum(t+.375,6500,.025,.018+.008*growth);
-  if(section>=5&&k%4===3)note(2,root+7,t+.375,.065,.105);
+  if(section>=5&&k%4===3)note(2,chordToneNear(root+7,k),t+.375,.065,.105);
   if(section>=6&&k%2===1)drum(t+.125,6000,.028,.023);
   if(fill){drum(t+.25,2100,.055,.04);drum(t+.375,2600,.06,.045)}
  }
@@ -56,10 +107,16 @@ function silence(){
  for(let i=0;i<gains.length;i++){gains[i].gain.cancelScheduledValues(audio.currentTime);gains[i].gain.setValueAtTime(0,audio.currentTime);voices[i].frequency.cancelScheduledValues(audio.currentTime)}
  noiseGain.gain.cancelScheduledValues(audio.currentTime);noiseGain.gain.setValueAtTime(0,audio.currentTime);noiseFilter.frequency.cancelScheduledValues(audio.currentTime);
 }
-async function begin(){if(running&&!resultShown)return;if(running)finish();resultShown=false;start.disabled=true;try{if(!audio)initAudio();await audio.resume();master.gain.setValueAtTime(muted?0:.55,audio.currentTime);silence();judged.clear();successful.clear();extras.clear();secondJump=landing=-10;combo=best=hits=scheduled=0;lastInput=-1;jump=-10;beginning=audio.currentTime+.3;running=true;panel.hidden=true;start.blur();updateStats();timer=window.setInterval(schedule,25);schedule()}catch{message.textContent='音の起動に失敗しました。もう一度お試しください。'}finally{start.disabled=false}}
+async function begin(){if(running&&!resultShown)return;if(running)finish();resultShown=false;start.disabled=true;try{if(!audio)initAudio();await audio.resume();master.gain.setValueAtTime(muted?0:.55,audio.currentTime);silence();judged.clear();successful.clear();extras.clear();secondJump=landing=-10;harmonyLevels.clear();lastHarmonyLevel=0;combo=best=hits=scheduled=0;lastInput=-1;jump=-10;beginning=audio.currentTime+.3;running=true;panel.hidden=true;start.blur();updateStats();timer=window.setInterval(schedule,25);schedule()}catch{message.textContent='音の起動に失敗しました。もう一度お試しください。'}finally{start.disabled=false}}
 function showResult(interrupted=false){resultShown=true;panel.hidden=false;$('h1').textContent=interrupted?'ひと休み。もう一度？':hits>=45?'世界が、色づいた！':'もう一歩、拍に乗ろう。';message.textContent=interrupted?'画面を離れたため停止しました。':`${hits} / 60 HIT · BEST COMBO ${best}`;start.textContent='もう一度あそぶ'}
 function finish(interrupted=false){running=false;clearInterval(timer);silence();showResult(interrupted)}
-function leadMidi(n:number){if(n<INTRO_BEATS)return [72,76,79,76,74,76,79,83][n];const k=n-INTRO_BEATS;return k>=TOTAL?[79,76,74,72][k-TOTAL]:k>=52?[76,74,72,71,67,69,71,72][(k-52)%8]:melody[k%16]}
+function leadMidi(n:number){
+ if(n<INTRO_BEATS)return [72,76,79,76,74,76,79,83][n];const k=n-INTRO_BEATS;
+ if(k>=TOTAL)return [79,76,74,72][k-TOTAL];
+ const motif=k>=52?[76,74,72,71,67,69,71,72][(k-52)%8]:k>=36&&k<40?[75,77,80,79][k-36]:melody[k%16];
+ // Preserve the motif's contour; anchor strong beats to the current voicing.
+ return k%2===0||k===TOTAL-1?chordToneNear(motif,k):motif;
+}
 function articulate(midi:number,now:number){
  gains[0].gain.cancelScheduledValues(now);note(0,midi,now,.055,.10);
  // Keep any already-reserved following beat after the short articulation.
@@ -71,11 +128,11 @@ function tap(){
  const n=Math.round(song/BEAT),error=Math.abs(song-n*BEAT);
  // Mandatory beats always take priority, including already judged beats.
  if(n>=0&&n<TOTAL&&error<=WINDOW){
-  if(judged.has(n))return;lastInput=now;judged.add(n);successful.add(n);hits++;combo++;best=Math.max(best,combo);jump=now;secondJump=-10;landing=beginning+INTRO_BEATS*BEAT+(n+1)*BEAT;flash=error<.065?'PERFECT':'GOOD';feedbackUntil=now+.35;articulate(leadMidi(n+INTRO_BEATS)+12,now);updateStats();return;
+  if(judged.has(n))return;lastInput=now;judged.add(n);successful.add(n);hits++;combo++;best=Math.max(best,combo);jump=now;secondJump=-10;landing=beginning+INTRO_BEATS*BEAT+(n+1)*BEAT;flash=error<.065?'PERFECT':'GOOD';feedbackUntil=now+.35;articulate(chordToneNear(leadMidi(n+INTRO_BEATS)+12,n),now);updateStats();return;
  }
  const prior=Math.floor(song/BEAT),offError=Math.abs(song-(prior+.5)*BEAT);
  if(prior>=0&&prior<TOTAL-1&&offError<=.075){
-  if(successful.has(prior)&&!extras.has(prior)&&now<landing-.04){extras.add(prior);lastInput=now;secondJump=now;flash='DOUBLE HOP';feedbackUntil=now+.22;articulate(leadMidi(prior+INTRO_BEATS)+19,now)}
+  if(successful.has(prior)&&!extras.has(prior)&&now<landing-.04){extras.add(prior);lastInput=now;secondJump=now;flash='DOUBLE HOP';feedbackUntil=now+.22;articulate(chordToneNear(leadMidi(prior+INTRO_BEATS)+19,Math.max(0,Math.min(TOTAL-1,Math.floor((now-beginning-INTRO_BEATS*BEAT)/BEAT)))),now)}
   return; // Optional offbeats never punish or award score.
  }
  if(now-lastInput<.08)return;lastInput=now;
