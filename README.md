@@ -4,15 +4,17 @@
 
 ## ローカル起動
 
-Node.js 20.19以上（または22.12以上）。`npm ci` → `npm run dev`。表示されたURLを開きます。`npm run build` で公開用 `docs/` を生成、`npm run preview` で確認できます。
+Node.js 20.19以上（または22.12以上）。`npm ci` → `npm run dev`。表示されたURLを開きます。`npm run build` で公開用 `dist/` を生成、`npm run preview` で確認できます。
 
 ## 操作
 
 「音を出してスタート」で音声を起動。画面タップ、Space、Enterが同じ入力です。♪でミュート、終了後は再試行できます。画面を離れると停止し、戻ったら再試行します。タイミング補正は±150ms。音に合わせたタップが遅判定になる端末ではプラス側へ調整（端末内に保存）。Bluetoothより本体スピーカー／有線を推奨。
 
-## GitHub Pages（所有者が設定）
+## GitHub Pages
 
-初版は `main` の `docs/` にビルド済み成果物を同梱します。GitHubのSettings → Pages → Deploy from a branch → `main` / `/docs` → Save。公開先は通常 `https://monnouchi.github.io/demo10/`。このリポジトリからPages設定を変更する処理はありません。更新時はビルドして `docs/` もcommitしてください。
+公開先：<https://monnouchi.github.io/demo10/>。Pagesの公開元はGitHub Actionsです。`main` へのpush後、[公開ワークフロー](.github/workflows/pages.yml) が `npm ci` → 型チェック・ビルド → `dist/` のPages公開を行います。PRではビルドのみ実行し、手動実行も可能です。
+
+`src/` がゲーム本体、`dist/` が生成される配信専用成果物、`docs/` が説明書です。`dist/` はcommitしません。初版の `docs/index.html` と `docs/assets/` は削除済みで、ブランチの `/docs` 公開は使用しません。詳しくは[公開手順](docs/deployment.md)。
 
 ## 音と判定
 
