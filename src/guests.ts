@@ -1,13 +1,17 @@
 import {drawBuddy} from './character';
 import {drawQuirk} from './quirks';
-export type Guest={kind:number,time:number,life:number,field:number,color:string,dancers?:number,born?:number};
+export type Guest={kind:number,time:number,life:number,field:number,color:string,dancers?:number,born?:number,wasDancers?:number,changed?:number};
+export function dancerCount(guest:Guest,now:number){
+ const target=guest.dancers??2,from=guest.wasDancers??target,p=Math.min(1,Math.max(0,(now-(guest.changed??guest.time))/.4)),rest=Math.max(0,(now-guest.time-.8)/.8);
+ return Math.max(2,Math.min(6,from+(target-from)*p-rest));
+}
 export function drawGuests(g:CanvasRenderingContext2D,w:number,h:number,now:number,guests:readonly Guest[],phase:number,reduced:boolean){
  g.save();g.beginPath();g.rect(0,128,w,Math.max(0,h-256));g.clip();
  for(const guest of guests){const p=(now-guest.time)/guest.life;if(p<0||p>=1)continue;const fade=guest.kind===2?Math.min(1,(now-(guest.born??guest.time))*2,(1-p)*6):Math.min(1,p*8,(1-p)*6);g.globalAlpha=fade*.7;g.fillStyle=g.strokeStyle=guest.color;g.lineWidth=1;
   if(guest.kind>=3)drawQuirk(g,w,h,p,guest.kind,guest.field,guest.color,reduced);
   if(guest.kind===0)drawPhenomenon(g,w,h,p,guest.field,reduced);
   if(guest.kind===1)drawCraft(g,w,h,p,guest.field,fade,reduced);
-  if(guest.kind===2){const count=Math.max(2,Math.min(6,guest.dancers??2)),rest=Math.max(0,(now-guest.time-.8)/.8),visible=Math.max(2,count-rest);
+  if(guest.kind===2){const visible=dancerCount(guest,now),count=Math.ceil(visible);
    for(let i=0;i<count;i++){const opacity=i<2?1:Math.max(0,Math.min(1,visible-i));if(!opacity)continue;const formation=dancePosition(i,guest.field,phase,reduced),x=w*formation.x,y=h*formation.y,bounce=reduced?0:Math.sin(phase*Math.PI+i*.4)*5,step=reduced?0:Math.sin(phase*Math.PI*2+i*.5)*4;
     g.save();g.globalAlpha=fade*.7*opacity;g.translate(x,y-bounce);g.scale(.50,.50);g.rotate(reduced?0:Math.sin(phase*Math.PI*2+i*.4)*(.08+guest.field*.035));drawBuddy(g,i%2?'#e1a5ff':guest.color,'#151823',false,guest.field>=2,4+step,step,true);
     if((guest.field+i)%3===0){g.fillStyle=guest.color;g.fillRect(-20,-38,40,4);g.fillRect(-8,-46,16,8)}else{g.fillStyle='#f3f5e9';g.fillRect(-13,-9,26,3)}g.restore();}
