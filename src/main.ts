@@ -54,6 +54,7 @@ const ninths=[74,67,64,69,74,64,71,72,67,67,60,69,71,64,69];
 let harmonyLevels=new Map<number,number>(),lastHarmonyLevel=0;
 let growthPoints=0,worldFrom=0,worldChanged=-10,lastWorldLoss=-10;
 const layerGains:GainNode[]=[];
+const worldLosses=new Set<number>();
 function musicStage(){const stage=worldStage();return stage>=4?3:stage>=2?2:stage>=1?1:0}
 function visualWorld(now:number){const p=Math.max(0,Math.min(1,(now-worldChanged)/.4));return worldFrom+(worldStage()-worldFrom)*p}
 function changeGrowth(points:number){
@@ -61,8 +62,8 @@ function changeGrowth(points:number){
  const stage=worldStage(),strength=.65+.35*stage/7;
  layerGains.forEach((layer,i)=>{const threshold=i===2?1:i===1?2:4,param=layer.gain;param.cancelScheduledValues(now);param.setValueAtTime(param.value,now);param.linearRampToValueAtTime(stage>=threshold?strength:0,now+.35)});
 }
-function breakCombo(){
- combo=0;const stage=worldStage();if(stage>0&&audio.currentTime-lastWorldLoss>=1.2){lastWorldLoss=audio.currentTime;changeGrowth(stages[stage-1].at)}
+function breakCombo(hit?:number){
+ combo=0;if(hit!==undefined){if(worldLosses.has(hit))return;worldLosses.add(hit)}const stage=worldStage();if(stage>0&&audio.currentTime-lastWorldLoss>=1.2){lastWorldLoss=audio.currentTime;changeGrowth(stages[stage-1].at)}
  // Existing phrase and note envelopes continue; only layer gain fades.
  lastHarmonyLevel=rewardLevel();
 }
@@ -155,7 +156,7 @@ function silence(){
  for(let i=0;i<gains.length;i++){gains[i].gain.cancelScheduledValues(audio.currentTime);gains[i].gain.setValueAtTime(0,audio.currentTime);voices[i].frequency.cancelScheduledValues(audio.currentTime)}
  noiseGain.gain.cancelScheduledValues(audio.currentTime);noiseGain.gain.setValueAtTime(0,audio.currentTime);noiseFilter.frequency.cancelScheduledValues(audio.currentTime);
 }
-async function begin(){if(running&&!resultShown)return;if(running)finish();resultShown=false;endedAt=0;runVersion++;card=null;result=null;sharing=false;share.hidden=true;share.disabled=true;$('#share-status').textContent='';start.disabled=true;try{if(!audio)initAudio();await audio.resume();master.gain.setValueAtTime(muted?0:.55,audio.currentTime);silence();judged.clear();successful.clear();extras.clear();ripples=[];shardsTaken.clear();shardBursts=[];guests=[];guestOrdinal=0;guestLast=-10;guestLastKind=-1;dancerChain=0;dancerLast=-2;crowd=0;crowdAt=audio.currentTime;practiceBeats.clear();practiceJump=practiceLanding=lastPractice=practiceFeedback=-10;secondJump=landing=-10;harmonyLevels.clear();lastHarmonyLevel=0;combo=best=hits=perfectHits=goodHits=scheduled=0;growthPoints=worldFrom=0;worldChanged=lastWorldLoss=-10;layerGains.forEach(layer=>{layer.gain.cancelScheduledValues(audio.currentTime);layer.gain.setValueAtTime(0,audio.currentTime)});lastInput=-1;jump=feedbackStarted=-10;feedbackUntil=0;beginning=audio.currentTime+.05;learning=true;running=true;panel.hidden=true;$('main').dataset.result='false';panel.dataset.perfect='false';panel.dataset.result='false';$('#precision').hidden=true;start.blur();updateStats();timer=window.setInterval(schedule,25);schedule()}catch{message.textContent='音の起動に失敗しました。もう一度お試しください。'}finally{start.disabled=false}}
+async function begin(){if(running&&!resultShown)return;if(running)finish();resultShown=false;endedAt=0;runVersion++;card=null;result=null;sharing=false;share.hidden=true;share.disabled=true;$('#share-status').textContent='';start.disabled=true;try{if(!audio)initAudio();await audio.resume();master.gain.setValueAtTime(muted?0:.55,audio.currentTime);silence();judged.clear();successful.clear();extras.clear();ripples=[];shardsTaken.clear();shardBursts=[];guests=[];guestOrdinal=0;guestLast=-10;guestLastKind=-1;dancerChain=0;dancerLast=-2;crowd=0;crowdAt=audio.currentTime;practiceBeats.clear();practiceJump=practiceLanding=lastPractice=practiceFeedback=-10;secondJump=landing=-10;harmonyLevels.clear();lastHarmonyLevel=0;combo=best=hits=perfectHits=goodHits=scheduled=0;worldLosses.clear();growthPoints=worldFrom=0;worldChanged=lastWorldLoss=-10;layerGains.forEach(layer=>{layer.gain.cancelScheduledValues(audio.currentTime);layer.gain.setValueAtTime(0,audio.currentTime)});lastInput=-1;jump=feedbackStarted=-10;feedbackUntil=0;beginning=audio.currentTime+.05;learning=true;running=true;panel.hidden=true;$('main').dataset.result='false';panel.dataset.perfect='false';panel.dataset.result='false';$('#precision').hidden=true;start.blur();updateStats();timer=window.setInterval(schedule,25);schedule()}catch{message.textContent='音の起動に失敗しました。もう一度お試しください。'}finally{start.disabled=false}}
 function allPerfect(){return !learning&&(running?audio.currentTime-beginning:endedAt)>=finale&&perfectHits===300&&goodHits===0&&hits===300&&judged.size===300}
 function showResult(interrupted=false){if(resultShown&&!interrupted)return;const completed=(running?audio.currentTime-beginning:endedAt)>=finale&&judged.size===300,stopped=interrupted&&!completed,perfect=completed&&allPerfect();resultShown=true;panel.hidden=false;$('main').dataset.result='true';panel.dataset.perfect=String(perfect);panel.dataset.result='true';$('h1').textContent=stopped?'ひと休み。もう一度？':perfect?'ALL PERFECT!':hits>=225?'世界が、色づいた！':'もう一歩、拍に乗ろう。';message.textContent=stopped?'画面を離れたため停止しました。':`${hits} / 300 HIT · BEST COMBO ${best}`;$('#precision').hidden=false;$('#perfect-count').textContent=String(perfectHits);$('#good-count').textContent=String(goodHits);$('#miss-count').textContent=String(Math.max(0,judged.size-hits));start.textContent='もう一度';result=Object.freeze({hits,perfect:perfectHits,good:goodHits,miss:Math.max(0,judged.size-hits),best,completed,allPerfect:perfect});share.hidden=false;share.disabled=true;share.textContent='画像を準備中';void prepareCard(result,runVersion)}
 async function prepareCard(snapshot:RunResult,version:number){try{const file=await resultCard(snapshot);if(version!==runVersion||!resultShown||result!==snapshot)return;card=file;saveOnly=true;try{saveOnly=!(typeof navigator.share==='function'&&typeof navigator.canShare==='function'&&navigator.canShare({files:[file]}))}catch{}share.textContent=saveOnly?'PNGを保存':'画像を共有';share.disabled=false}catch{if(version===runVersion&&result===snapshot){share.textContent='画像を再作成';share.disabled=false;$('#share-status').textContent='画像を作れませんでした。もう一度お試しください。'}}}
@@ -223,7 +224,7 @@ function tap(){
   if(successful.has(prior)&&!extras.has(prior)&&now<landing-.02){extras.add(prior);lastInput=now;secondJump=now;ripple(now);inviteGuest(now,current.stage,prior);flash='DOUBLE HOP';feedbackStarted=now;feedbackUntil=now+.22;articulate(chordToneNear(leadMidi(journey.indexOf(current))+19,prior),now)}return;
  }
  if(now-lastInput<.08)return;lastInput=now;
- if(!judged.has(n)&&song>=targets[0].at&&song<finale){breakCombo();flash='拍を待とう';feedbackStarted=now;feedbackUntil=now+.25;updateStats()}
+ if(!judged.has(n)&&song>=targets[0].at&&song<finale){breakCombo(n);flash='拍を待とう';feedbackStarted=now;feedbackUntil=now+.25;updateStats()}
 }
 function updateStats(){$('#score').textContent=`${String(hits).padStart(3,'0')} / 300`;$('#combo').textContent=`COMBO ${combo}`;const level=worldStage();$('#growth').setAttribute('aria-label',`世界の色づき ${level} / 7 · ${stages[level].name}`);$('#growth').dataset.level=String(level);$('#growth-label').textContent=level===7?'WORLD MAX':'WORLD';document.querySelectorAll<HTMLElement>('#growth i').forEach((tile,i)=>{tile.style.background=i<level?stages[i+1].color:'#83877c';tile.dataset.lit=String(i<level)})}
 start.addEventListener('click',begin);$('main').addEventListener('pointerdown',e=>{if((e.target as HTMLElement).closest('button,label,#panel'))return;e.preventDefault();tap()});window.addEventListener('keydown',e=>{if((e.code==='Space'||e.code==='Enter')&&!(e.target instanceof HTMLInputElement)&&!(e.target instanceof HTMLButtonElement)){e.preventDefault();if(e.repeat)return;if(running&&!resultShown)tap();else void begin()}});
@@ -324,7 +325,7 @@ function draw(){
   else{
    $('#hint').textContent=finishing?'FINALE · 走破!':beat.kind==='bridge'?`${levels[beat.stage].name} → ${Math.round(60/beat.span)} BPM`:`${beat.stage+1} / 5 · ${levels[beat.stage].name} · ${levels[beat.stage].bpm} BPM`;
    if(now<feedbackUntil)drawFeedback(g,w,h,flash,now-feedbackStarted,accent,Math.min(7,stage+beat.stage),gentle);else if(t<.35){g.font='bold 28px PulsePixel, monospace';g.fillText('TAP!',w/2,h*.32)}
-   for(const b of targets){if(song>b.at+windowFor(b)+offset&&!judged.has(b.hit)){judged.add(b.hit);breakCombo();updateStats()}}
+   for(const b of targets){if(song>b.at+windowFor(b)+offset&&!judged.has(b.hit)){judged.add(b.hit);breakCombo(b.hit);updateStats()}}
    if(song>=finale+8*(60/168)&&!resultShown)showResult();if(resultShown)$('#hint').textContent='FINALE · 旅の終わり';if(song>=journeyDuration)finish();
   }
  }
