@@ -1,8 +1,10 @@
 import {drawBuddy} from './character';
+import {drawQuirk} from './quirks';
 export type Guest={kind:number,time:number,life:number,field:number,color:string,dancers?:number,born?:number};
 export function drawGuests(g:CanvasRenderingContext2D,w:number,h:number,now:number,guests:readonly Guest[],phase:number,reduced:boolean){
  g.save();g.beginPath();g.rect(0,128,w,Math.max(0,h-256));g.clip();
  for(const guest of guests){const p=(now-guest.time)/guest.life;if(p<0||p>=1)continue;const fade=guest.kind===2?Math.min(1,(now-(guest.born??guest.time))*2,(1-p)*6):Math.min(1,p*8,(1-p)*6);g.globalAlpha=fade*.7;g.fillStyle=g.strokeStyle=guest.color;g.lineWidth=1;
+  if(guest.kind>=3)drawQuirk(g,w,h,p,guest.kind,guest.field,guest.color,reduced);
   if(guest.kind===0)drawPhenomenon(g,w,h,p,guest.field,reduced);
   if(guest.kind===1)drawCraft(g,w,h,p,guest.field,fade,reduced);
   if(guest.kind===2){const count=Math.max(2,Math.min(6,guest.dancers??2)),rest=Math.max(0,(now-guest.time-.8)/.8),visible=Math.max(2,count-rest);

@@ -16,7 +16,7 @@ let resultShown=false,learning=false,endedAt=0;
 let running=false, muted=false, beginning=0, scheduled=0, combo=0,best=0,hits=0,offset=0,lastInput=-1,jump=-10,flash='', feedbackUntil=0,feedbackStarted=-10;
 let successful=new Set<number>(), extras=new Set<number>(), landing=-10, secondJump=-10;
 let ripples:Ripple[]=[];
-let guests:Guest[]=[],guestOrdinal=0,guestLast=-10;let crowd=0,crowdAt=0,dancerChain=0,dancerLast=-2;
+let guests:Guest[]=[],guestOrdinal=0,guestLast=-10,guestLastKind=-1;let crowd=0,crowdAt=0,dancerChain=0,dancerLast=-2;
 let practiceJump=-10,practiceLanding=-10,lastPractice=-10,practiceFeedback=-10,practiceFlash='';
 let practiceBeats=new Set<number>(),drumCues:{start:number,end:number}[]=[];
 const reducedMotion=matchMedia('(prefers-reduced-motion: reduce)');
@@ -143,7 +143,7 @@ function silence(){
  for(let i=0;i<gains.length;i++){gains[i].gain.cancelScheduledValues(audio.currentTime);gains[i].gain.setValueAtTime(0,audio.currentTime);voices[i].frequency.cancelScheduledValues(audio.currentTime)}
  noiseGain.gain.cancelScheduledValues(audio.currentTime);noiseGain.gain.setValueAtTime(0,audio.currentTime);noiseFilter.frequency.cancelScheduledValues(audio.currentTime);
 }
-async function begin(){if(running&&!resultShown)return;if(running)finish();resultShown=false;endedAt=0;start.disabled=true;try{if(!audio)initAudio();await audio.resume();master.gain.setValueAtTime(muted?0:.55,audio.currentTime);silence();judged.clear();successful.clear();extras.clear();ripples=[];guests=[];guestOrdinal=0;guestLast=-10;dancerChain=0;dancerLast=-2;crowd=0;crowdAt=audio.currentTime;practiceBeats.clear();practiceJump=practiceLanding=lastPractice=practiceFeedback=-10;secondJump=landing=-10;harmonyLevels.clear();lastHarmonyLevel=0;combo=best=hits=scheduled=0;lastInput=-1;jump=feedbackStarted=-10;feedbackUntil=0;beginning=audio.currentTime+.05;learning=true;running=true;panel.hidden=true;start.blur();updateStats();timer=window.setInterval(schedule,25);schedule()}catch{message.textContent='音の起動に失敗しました。もう一度お試しください。'}finally{start.disabled=false}}
+async function begin(){if(running&&!resultShown)return;if(running)finish();resultShown=false;endedAt=0;start.disabled=true;try{if(!audio)initAudio();await audio.resume();master.gain.setValueAtTime(muted?0:.55,audio.currentTime);silence();judged.clear();successful.clear();extras.clear();ripples=[];guests=[];guestOrdinal=0;guestLast=-10;guestLastKind=-1;dancerChain=0;dancerLast=-2;crowd=0;crowdAt=audio.currentTime;practiceBeats.clear();practiceJump=practiceLanding=lastPractice=practiceFeedback=-10;secondJump=landing=-10;harmonyLevels.clear();lastHarmonyLevel=0;combo=best=hits=scheduled=0;lastInput=-1;jump=feedbackStarted=-10;feedbackUntil=0;beginning=audio.currentTime+.05;learning=true;running=true;panel.hidden=true;start.blur();updateStats();timer=window.setInterval(schedule,25);schedule()}catch{message.textContent='音の起動に失敗しました。もう一度お試しください。'}finally{start.disabled=false}}
 function showResult(interrupted=false){resultShown=true;panel.hidden=false;$('h1').textContent=interrupted?'ひと休み。もう一度？':hits>=225?'世界が、色づいた！':'もう一歩、拍に乗ろう。';message.textContent=interrupted?'画面を離れたため停止しました。':`${hits} / 300 HIT · BEST COMBO ${best}`;start.textContent='もう一度あそぶ'}
 function finish(interrupted=false){endedAt=Math.min(journeyDuration,Math.max(0,audio.currentTime-beginning));learning=false;ripples=[];guests=[];crowd=0;dancerChain=0;dancerLast=-2;running=false;clearInterval(timer);silence();showResult(interrupted)}
 function leadMidi(n:number){
@@ -174,10 +174,10 @@ function inviteGuest(now:number,field:number,hit:number){
  dancerChain=hit===dancerLast+1?Math.min(5,dancerChain+1):1;dancerLast=hit;
  const dancers=guests.find(v=>v.kind===2);if(dancers){dancers.dancers=Math.min(6,1+dancerChain);dancers.time=now;dancers.field=field}
  if(now-guestLast<.9||guests.length>=2)return;
- let kind=(field+guestOrdinal)%3;for(let i=0;i<3&&guests.some(v=>v.kind===kind);i++)kind=(kind+1)%3;
- if(guests.some(v=>v.kind===kind))return;
- const colors=['#8bdfff','#e1a5ff','#91ffe1'];
- guests.push({kind,time:now,life:kind===0?1.35:kind===1?3.6:4,field,color:colors[kind],...(kind===2?{dancers:Math.min(6,1+dancerChain),born:now}:{})});guestOrdinal++;guestLast=now;
+ const pools=[[0,6,3,2,9,1,4],[1,7,6,2,4,0,9],[4,8,1,2,3,9,5],[3,5,0,2,6,9,1],[9,8,1,2,7,5,6]],pool=pools[field];
+ let pick=0;while(pick<pool.length&&(pool[(guestOrdinal+pick)%pool.length]===guestLastKind||guests.some(v=>v.kind===pool[(guestOrdinal+pick)%pool.length])))pick++;
+ if(pick===pool.length)return;const kind=pool[(guestOrdinal+pick)%pool.length],lives=[1.35,3.6,4,2,2.5,3.8,3.8,2.4,2.2,2.8],colors=['#8bdfff','#e1a5ff','#91ffe1'];
+ guests.push({kind,time:now,life:lives[kind],field,color:colors[kind%3],...(kind===2?{dancers:Math.min(6,1+dancerChain),born:now}:{})});guestOrdinal+=pick+1;guestLast=now;guestLastKind=kind;
 }
 function tap(){
  if(!running||resultShown)return;const now=audio.currentTime;
