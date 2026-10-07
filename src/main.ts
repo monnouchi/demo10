@@ -1,13 +1,14 @@
 import './style.css';
-import {drawBackdrop} from './background';
+import {journey,targets,levels,duration as journeyDuration,finale,position,pitch,windowFor,offWindow,} from './journey';
+import {drawField,platform,fireworks} from './field';
 import {drawRipples,type Ripple} from './ripple';
 const $ = <T extends HTMLElement>(s:string)=>document.querySelector<T>(s)!;
 const canvas=$<HTMLCanvasElement>('canvas'), g=canvas.getContext('2d')!;
 const panel=$('#panel'), start=$<HTMLButtonElement>('#start'), message=$('#message');
 const WORLD_SCALE=.85;
-const BEAT=.5, INTRO_BEATS=8, OUTRO_BEATS=4, TOTAL=60, WINDOW=.14;
+const BEAT=.5, INTRO_BEATS=8, TOTAL=300;
 let audio:AudioContext, master:GainNode, voices:OscillatorNode[]=[], gains:GainNode[]=[], noise:AudioBufferSourceNode, noiseGain:GainNode, noiseFilter:BiquadFilterNode;
-let resultShown=false,learning=false;
+let resultShown=false,learning=false,endedAt=0;
 let running=false, muted=false, beginning=0, scheduled=0, combo=0,best=0,hits=0,offset=0,lastInput=-1,jump=-10,flash='', feedbackUntil=0;
 let successful=new Set<number>(), extras=new Set<number>(), landing=-10, secondJump=-10;
 let ripples:Ripple[]=[];
@@ -15,7 +16,7 @@ let practiceJump=-10,practiceLanding=-10,lastPractice=-10,practiceFeedback=-10,p
 let practiceBeats=new Set<number>(),drumCues:{start:number,end:number}[]=[];
 const reducedMotion=matchMedia('(prefers-reduced-motion: reduce)');
 let judged=new Set<number>(), timer:number, w=390,h=800;
-const melody=[72,76,79,76,74,76,81,79,72,76,79,84,81,79,76,74];
+
 type Harmony={name:string,bass:number,inner:readonly number[],tones:readonly number[]};
 const harmonyPath:readonly Harmony[]=[
  {name:'Cadd9',bass:36,inner:[64,62,67,64],tones:[60,64,67,74]},
@@ -59,19 +60,17 @@ function toneNear(target:number,tones:readonly number[]){
  for(let midi=target-12;midi<=target+12;midi++){if(tones.some(t=>t%12===midi%12)&&Math.abs(midi-target)<bestDistance){best=midi;bestDistance=Math.abs(midi-target)}}return best;
 }
 function harmonyAt(k:number):Harmony{
- if(k<0)return k< -4?{name:'C',bass:36,inner:[64,67,60,64],tones:[60,64,67]}:harmonyPath[11];
- // Resolve every ending to a clear tonic, even after a rewarded suspension.
- if(k>=TOTAL-1)return {name:'C',bass:36,inner:[64,67,60,64],tones:[60,64,67]};
- const index=Math.floor(k/4),base=harmonyPath[index],level=harmonyLevels.get(index)??lastHarmonyLevel;
- const triad=basicTriads[index];let tones=[...triad];
- if(level>=1)tones.push(sevenths[index]);if(level>=2)tones.push(ninths[index]);
- if(index===10&&level>=2)tones=tones.filter(t=>t%12!==11); // sus4 resolves to B in the next G7 bar.
+ const field=Math.max(0,Math.min(4,Math.floor(k/60))),local=Math.max(0,k)%60;
+ const index=levels[field].chords[Math.floor(local/4)],base=harmonyPath[index],level=harmonyLevels.get(Math.floor(k/4))??lastHarmonyLevel;
+ const triad=local===59?[60,64,67]:basicTriads[index];let tones=[...triad];
+ if(local!==59){if(level>=1)tones.push(sevenths[index]);if(level>=2)tones.push(ninths[index]);
+ if(index===10&&level>=2)tones=tones.filter(t=>t%12!==11);
  const colorTone=index===7?76:index===9?62:index===10||index===11||index===14?64:undefined;
- if(level>=3&&colorTone!==undefined)tones.push(colorTone);
- const third=index===10&&level>=2?60:toneNear(64,[triad[1]]),fifth=toneNear(64,[triad[2]]);
- const seventh=toneNear(64,[sevenths[index]]),ninth=toneNear(64,[ninths[index]]);
- const inner=level===0?[third,fifth,third,toneNear(64,[triad[0]])]:level===1?[third,seventh,third,fifth]:[third,seventh,level>=3&&colorTone!==undefined?toneNear(64,[colorTone]):ninth,third];
- return {name:base.name,bass:base.bass,inner,tones};
+ if(level>=3&&colorTone!==undefined)tones.push(colorTone)}
+ const third=toneNear(64,[triad[1]]),fifth=toneNear(64,[triad[2]]),seventh=toneNear(64,[sevenths[index]]),ninth=toneNear(64,[ninths[index]]);
+ const inner=local===59||level===0?[third,fifth,third,toneNear(64,[triad[0]])]:level===1?[third,seventh,third,fifth]:[third,seventh,ninth,third];
+ const convert=(m:number)=>levels[field].minor&&[3,11,14].includes(index)&&m%12===11?m+levels[field].key:pitch(m,field);
+ return {name:base.name,bass:convert(local===59?36:base.bass),inner:inner.map(convert),tones:tones.map(convert)};
 }
 function chordToneNear(target:number,k:number){return toneNear(target,harmonyAt(k).tones)}
 function initAudio(){
@@ -81,44 +80,44 @@ function initAudio(){
  noise=audio.createBufferSource();noise.buffer=b;noise.loop=true;noiseGain=audio.createGain();noiseGain.gain.value=0;noiseFilter=audio.createBiquadFilter();noiseFilter.type='bandpass';noiseFilter.Q.value=.7;noise.connect(noiseFilter).connect(noiseGain).connect(master);noise.start();
 }
 function note(voice:number,midi:number,t:number,duration:number,level:number){if(musicStage()<(voice===2?1:voice===1?2:3))return;const gain=gains[voice].gain;gain.setValueAtTime(0,t);voices[voice].frequency.setValueAtTime(440*2**((midi-69)/12),t);gain.setValueAtTime(level,t+.002);gain.linearRampToValueAtTime(0,t+duration)}
-function leadSettings(n:number){
- const k=n-INTRO_BEATS;
- return {duration:n<INTRO_BEATS?.18:k>=TOTAL?(k===TOTAL+3?.44:.25):k===TOTAL-1?.36:.20,
-  level:n<INTRO_BEATS?.045:k>=TOTAL?.065:.045+.025*Math.min(7,Math.floor(k/8))/7};
-}
+function leadSettings(n:number){const b=journey[n];return {duration:b.span*(b.kind==='outro'?.85:b.stage===3?.56:b.stage===1?.28:.40),level:.045+.025*Math.min(7,Math.floor(b.local/8))/7}}
 function playLead(n:number,t:number){const v=leadSettings(n);note(0,leadMidi(n),t,v.duration,v.level)}
 function drum(t:number,tone:number,duration:number,level:number){
  drumCues=drumCues.filter(c=>c.end>audio.currentTime-.1);drumCues.push({start:t,end:t+duration});
  noiseFilter.frequency.setValueAtTime(tone,t);noiseGain.gain.setValueAtTime(0,t);
  noiseGain.gain.setValueAtTime(level,t+.002);noiseGain.gain.linearRampToValueAtTime(0,t+duration);
 }
+const pivots=[[],[57,61,64,67],[64,68,71,74],[60,64,67,70],[62,66,69,72]];
 function schedule(){
  if(!running||learning)return;
- while(scheduled<INTRO_BEATS+TOTAL+OUTRO_BEATS&&beginning+scheduled*BEAT<audio.currentTime+.12){
-  const n=scheduled++,t=beginning+n*BEAT;latchHarmony(n-INTRO_BEATS);playLead(n,t);
-  if(n<INTRO_BEATS){
-   // Audible midrange ticks on every beat; the last four match the visual count.
-   drum(t,n===7?2400:n>=4?1800:1200,.10,n>=4?.10:.085);
-   if(n===7){drum(t+.25,3400,.055,.065);drum(t+.375,4600,.055,.075)}
+ while(scheduled<journey.length&&beginning+journey[scheduled].at<audio.currentTime+.12){
+  const n=scheduled++,b=journey[n],t=beginning+b.at,k=b.local,d=b.span,scale=d/.5;
+  if(b.kind==='intro'){drum(t,k===7?2400:k>=4?1800:1200,.10,k>=4?.10:.085);if(k===7){drum(t+d*.5,3400,.055,.065);drum(t+d*.75,4600,.055,.075)}continue}
+  if(b.kind==='bridge'){
+   // The old tonic opens into the next dominant on the same three tonal voices.
+   const pivot=pivots[b.stage],bass=k===0?pitch(36,b.stage-1):pivot[0]-24;
+   note(2,bass,t,d*.7,.14);note(1,k===0?pitch(64,b.stage-1):pivot[k%4],t,d*.65,.035);
+   note(0,k===0?pitch(72,b.stage-1):pivot[(k+1)%4]+12,t,d*.45,.055);
+   drum(t,k%2?1800:1200,d*.18,.07);if(k>=2){drum(t+d*.5,3400,d*.12,.04);if(k===3)drum(t+d*.75,4600,d*.10,.06)}
    continue;
   }
-  const k=n-INTRO_BEATS;
-  if(k>=TOTAL){const o=k-TOTAL;note(1,[64,67,62,64][o],t,.44,.04);note(2,36,t,.45,.16);drum(t,o===0?220:1800,.08,o===0?.055:.025);continue}
-  // The same two-beat rhythmic nucleus grows by song time, independent of combo.
-  const section=Math.min(7,Math.floor(k/8)),growth=section/7,fill=section>=3&&k%8===7;
-  const harmony=harmonyAt(k),root=harmony.bass;
-  note(1,harmony.inner[k%4],t,section>=3?.17:.26,.028+.012*growth);
-  note(2,root,t,k===59?.42:section>=2?.18:.25,.12+.055*growth);
-  drum(t,k===0?1200:k%2?1800+growth*700:220+growth*100,k===0?.12:k%2?.085:.075,k===0?.105:.032+.025*growth);
+  if(b.kind==='outro'){playLead(n,t);note(1,pitch([64,67,62,64][k],4),t,d*.85,.04);note(2,pitch(36,4),t,d*.9,.16);drum(t,k===0?1200:1800,d*.2,k===0?.075:.035);continue}
+  latchHarmony(b.hit);playLead(n,t);
+  const section=Math.min(7,Math.floor(k/8)),growth=section/7,fill=section>=3&&k%8===7,harmony=harmonyAt(b.hit),root=harmony.bass;
+  const innerDuration=b.stage===3?.45:b.stage===1?.28:section>=3?.34:.52;
+  note(1,harmony.inner[k%4],t,d*innerDuration,.028+.012*growth);
+  note(2,root,t,k===59?d*.84:d*(b.stage===2?.58:section>=2?.36:.5),.12+.055*growth);
+  const snare=b.stage===1?k%4===1||k%4===2:b.stage===2?k%4===3:b.stage===3?k%4===2:k%2===1;
+  drum(t,k===0?1200:snare?1800+growth*700+b.stage*140:320+b.stage*180,k===0?d*.24:d*.17,k===0?.105:.035+.025*growth);
   if(section>=1&&(section>=2||k%2===0)){
-   note(2,root+(section>=3&&k%2?12:0),t+.25,.085,.085+.045*growth);
-   if(!fill)drum(t+.25,5500+growth*1000,.035,.020+.010*growth);
+   note(2,root+((b.stage===1||b.stage===4||section>=3)&&k%2?12:0),t+d*.5,.085*scale,.085+.045*growth);
+   if(!fill)drum(t+d*.5,5500+b.stage*180,.035*scale,.020+.010*growth);
   }
-  if(section>=3)note(1,harmony.inner[(k+1)%4]+((harmonyLevels.get(Math.floor(k/4))??0)>=4?12:0),t+.25,.11,.024+.012*growth);
-  if(section>=4&&k%2===1&&!fill)drum(t+.375,6500,.025,.018+.008*growth);
-  if(section>=5&&k%4===3)note(2,chordToneNear(root+7,k),t+.375,.065,.105);
-  if(section>=6&&k%2===1)drum(t+.125,6000,.028,.023);
-  if(fill){drum(t+.25,2100,.055,.04);drum(t+.375,2600,.06,.045)}
+  if(section>=3)note(1,harmony.inner[(k+(b.stage===3?2:1))%4]+(rewardLevel()>=4?12:0),t+d*.5,.11*scale,.024+.012*growth);
+  if(section>=4&&k%2===1&&!fill)drum(t+d*.75,6500,.025*scale,.018+.008*growth);
+  if(section>=5&&k%4===3)note(2,chordToneNear(root+7,b.hit),t+d*.75,.065*scale,.105);
+  if((section>=6||b.stage===4&&section>=2)&&k%2===1)drum(t+d*.25,6000,.028*scale,.023);
+  if(fill){drum(t+d*.5,2100+b.stage*120,.055*scale,.04);drum(t+d*.75,2600+b.stage*180,.06*scale,.045)}
  }
 }
 function silence(){
@@ -126,22 +125,23 @@ function silence(){
  for(let i=0;i<gains.length;i++){gains[i].gain.cancelScheduledValues(audio.currentTime);gains[i].gain.setValueAtTime(0,audio.currentTime);voices[i].frequency.cancelScheduledValues(audio.currentTime)}
  noiseGain.gain.cancelScheduledValues(audio.currentTime);noiseGain.gain.setValueAtTime(0,audio.currentTime);noiseFilter.frequency.cancelScheduledValues(audio.currentTime);
 }
-async function begin(){if(running&&!resultShown)return;if(running)finish();resultShown=false;start.disabled=true;try{if(!audio)initAudio();await audio.resume();master.gain.setValueAtTime(muted?0:.55,audio.currentTime);silence();judged.clear();successful.clear();extras.clear();ripples=[];practiceBeats.clear();practiceJump=practiceLanding=lastPractice=practiceFeedback=-10;secondJump=landing=-10;harmonyLevels.clear();lastHarmonyLevel=0;combo=best=hits=scheduled=0;lastInput=-1;jump=-10;beginning=audio.currentTime+.05;learning=true;running=true;panel.hidden=true;start.blur();updateStats();timer=window.setInterval(schedule,25);schedule()}catch{message.textContent='音の起動に失敗しました。もう一度お試しください。'}finally{start.disabled=false}}
-function showResult(interrupted=false){resultShown=true;panel.hidden=false;$('h1').textContent=interrupted?'ひと休み。もう一度？':hits>=45?'世界が、色づいた！':'もう一歩、拍に乗ろう。';message.textContent=interrupted?'画面を離れたため停止しました。':`${hits} / 60 HIT · BEST COMBO ${best}`;start.textContent='もう一度あそぶ'}
-function finish(interrupted=false){learning=false;ripples=[];running=false;clearInterval(timer);silence();showResult(interrupted)}
+async function begin(){if(running&&!resultShown)return;if(running)finish();resultShown=false;endedAt=0;start.disabled=true;try{if(!audio)initAudio();await audio.resume();master.gain.setValueAtTime(muted?0:.55,audio.currentTime);silence();judged.clear();successful.clear();extras.clear();ripples=[];practiceBeats.clear();practiceJump=practiceLanding=lastPractice=practiceFeedback=-10;secondJump=landing=-10;harmonyLevels.clear();lastHarmonyLevel=0;combo=best=hits=scheduled=0;lastInput=-1;jump=-10;beginning=audio.currentTime+.05;learning=true;running=true;panel.hidden=true;start.blur();updateStats();timer=window.setInterval(schedule,25);schedule()}catch{message.textContent='音の起動に失敗しました。もう一度お試しください。'}finally{start.disabled=false}}
+function showResult(interrupted=false){resultShown=true;panel.hidden=false;$('h1').textContent=interrupted?'ひと休み。もう一度？':hits>=225?'世界が、色づいた！':'もう一歩、拍に乗ろう。';message.textContent=interrupted?'画面を離れたため停止しました。':`${hits} / 300 HIT · BEST COMBO ${best}`;start.textContent='もう一度あそぶ'}
+function finish(interrupted=false){endedAt=Math.min(journeyDuration,Math.max(0,audio.currentTime-beginning));learning=false;ripples=[];running=false;clearInterval(timer);silence();showResult(interrupted)}
 function leadMidi(n:number){
- if(n<INTRO_BEATS)return [72,76,79,76,74,76,79,83][n];const k=n-INTRO_BEATS;
- if(k>=TOTAL)return [79,76,74,72][k-TOTAL];
- const motif=k>=52?[76,74,72,71,67,69,71,72][(k-52)%8]:k>=36&&k<40?[75,77,80,79][k-36]:melody[k%16];
- // Preserve the motif's contour; anchor strong beats to the current voicing.
- return k%2===0||k===TOTAL-1?chordToneNear(motif,k):motif;
+ const b=journey[n],k=b.local;
+ if(b.kind==='intro')return 72;
+ if(b.kind==='outro')return pitch([79,76,74,72][k],4);
+ if(b.kind==='bridge')return k===0?pitch(72,b.stage-1):pivots[b.stage][(k+1)%4]+12;
+ const motif=pitch(k>=52?[76,74,72,71,67,69,71,72][(k-52)%8]:levels[b.stage].motif[k%16],b.stage);
+ return k%2===0||k===59?chordToneNear(motif,b.hit):motif;
 }
 function articulate(midi:number,now:number){
  // A single noise articulation keeps early taps playable without tonal layers.
  if(musicStage()<3){drum(now,musicStage()===0?3200:4200,.03,.04);return}
  gains[0].gain.cancelScheduledValues(now);note(0,midi,now,.055,.10);
  // Keep any already-reserved following beat after the short articulation.
- for(let n=0;n<scheduled;n++){const t=beginning+n*BEAT;if(t>now+.055)playLead(n,t)}
+ for(let n=0;n<scheduled;n++){const t=beginning+journey[n].at;if(t>now+.055)playLead(n,t)}
 }
 function ripple(now:number){
  const stage=stages.reduce((v,s,i)=>combo>=s.at?i:v,0);
@@ -154,32 +154,33 @@ function ripple(now:number){
 function tap(){
  if(!running||resultShown)return;const now=audio.currentTime;
  if(learning){learning=false;beginning=now+.05;practiceJump=lastPractice=now;practiceLanding=now+.40;practiceFlash='JUMP!';practiceFeedback=now+.3;drum(now,3200,.03,.04);schedule();return}
- const song=now-beginning-INTRO_BEATS*BEAT-offset;
- if(song < -WINDOW){
-  if(now<beginning-WINDOW||now-lastPractice<.08)return;
-  const intro=now-beginning-offset,beat=Math.round(intro/BEAT),aligned=beat>=0&&beat<INTRO_BEATS&&Math.abs(intro-beat*BEAT)<=WINDOW;
-  if(aligned&&practiceBeats.has(beat))return;if(aligned)practiceBeats.add(beat);
-  lastPractice=practiceJump=now;practiceLanding=beginning+(Math.floor((now-beginning)/BEAT)+1)*BEAT;
-  practiceLanding=Math.max(now+.10,practiceLanding);practiceFlash=aligned?'NICE!':'TAP';practiceFeedback=now+.22;
-  // Keep the single noise voice and all reserved count/fill accents intact.
-  if(!drumCues.some(c=>now<c.end&&now+.04>c.start))drum(now,3200,.03,.04);
-  return;
+ const song=now-beginning-offset;
+ let nearest=targets[0];for(const b of targets)if(Math.abs(song-b.at)<Math.abs(song-nearest.at))nearest=b;
+ const error=Math.abs(song-nearest.at),n=nearest.hit;
+ // Main targets win before practice/debounce, including early inputs at every boundary.
+ if(error<=windowFor(nearest)){
+  if(judged.has(n))return;lastInput=now;judged.add(n);successful.add(n);hits++;combo++;best=Math.max(best,combo);jump=now;secondJump=-10;
+  landing=beginning+nearest.at+nearest.span+offset;flash=error<nearest.span*.13?'PERFECT':'GOOD';feedbackUntil=now+.30;
+  articulate(chordToneNear(leadMidi(journey.indexOf(nearest))+12,n),now);updateStats();return;
  }
- if(song>(TOTAL-1)*BEAT+WINDOW)return;
- const n=Math.round(song/BEAT),error=Math.abs(song-n*BEAT);
- // Mandatory beats always take priority, including already judged beats.
- if(n>=0&&n<TOTAL&&error<=WINDOW){
-  if(judged.has(n))return;lastInput=now;judged.add(n);successful.add(n);hits++;combo++;best=Math.max(best,combo);jump=now;secondJump=-10;landing=beginning+INTRO_BEATS*BEAT+(n+1)*BEAT;flash=error<.065?'PERFECT':'GOOD';feedbackUntil=now+.35;articulate(chordToneNear(leadMidi(n+INTRO_BEATS)+12,n),now);updateStats();return;
+ const current=position(song).beat;
+ if(current.kind==='intro'||current.kind==='bridge'){
+  if(song<-.14||now-lastPractice<.08)return;
+  const aligned=Math.abs(song-current.at)<=windowFor(current),id=journey.indexOf(current);
+  if(aligned&&practiceBeats.has(id))return;if(aligned)practiceBeats.add(id);
+  lastPractice=practiceJump=now;practiceLanding=Math.max(now+.10,beginning+current.at+current.span+offset);
+  practiceFlash=aligned?'NICE!':'TAP';practiceFeedback=now+.22;
+  if(!drumCues.some(c=>now<c.end&&now+.04>c.start))drum(now,3200,.03,.04);return;
  }
- const prior=Math.floor(song/BEAT),offError=Math.abs(song-(prior+.5)*BEAT);
- if(prior>=0&&prior<TOTAL-1&&offError<=.075){
-  if(successful.has(prior)&&!extras.has(prior)&&now<landing-.04){extras.add(prior);lastInput=now;secondJump=now;ripple(now);flash='DOUBLE HOP';feedbackUntil=now+.22;articulate(chordToneNear(leadMidi(prior+INTRO_BEATS)+19,Math.max(0,Math.min(TOTAL-1,Math.floor((now-beginning-INTRO_BEATS*BEAT)/BEAT)))),now)}
-  return; // Optional offbeats never punish or award score.
+ if(current.kind!=='main')return;
+ const prior=current.hit,offError=Math.abs(song-current.at-current.span*.5);
+ if(current.local<59&&offError<=offWindow(current)){
+  if(successful.has(prior)&&!extras.has(prior)&&now<landing-.02){extras.add(prior);lastInput=now;secondJump=now;ripple(now);flash='DOUBLE HOP';feedbackUntil=now+.22;articulate(chordToneNear(leadMidi(journey.indexOf(current))+19,prior),now)}return;
  }
  if(now-lastInput<.08)return;lastInput=now;
- if(n>=0&&n<TOTAL&&!judged.has(n)){breakCombo();flash='拍を待とう';feedbackUntil=now+.25;updateStats()}
+ if(!judged.has(n)&&song>=targets[0].at&&song<finale){breakCombo();flash='拍を待とう';feedbackUntil=now+.25;updateStats()}
 }
-function updateStats(){$('#score').textContent=`${String(hits).padStart(2,'0')} / 60`;$('#combo').textContent=`COMBO ${combo}`}
+function updateStats(){$('#score').textContent=`${String(hits).padStart(3,'0')} / 300`;$('#combo').textContent=`COMBO ${combo}`}
 start.addEventListener('click',begin);$('main').addEventListener('pointerdown',e=>{if((e.target as HTMLElement).closest('button,label,#panel'))return;e.preventDefault();tap()});window.addEventListener('keydown',e=>{if((e.code==='Space'||e.code==='Enter')&&!(e.target instanceof HTMLInputElement)&&!(e.target instanceof HTMLButtonElement)){e.preventDefault();if(e.repeat)return;if(running&&!resultShown)tap();else void begin()}});
 $('#mute').addEventListener('click',()=>{muted=!muted;if(master)master.gain.setTargetAtTime(muted?0:.55,audio.currentTime,.01);$('#mute').textContent=muted?'♪ OFF':'♪ ON';$('#mute').setAttribute('aria-label',muted?'音をオン':'音をミュート');$('#mute').blur()});
 $<HTMLInputElement>('#offset').addEventListener('input',e=>{offset=Number((e.target as HTMLInputElement).value)/1000;$('#value').textContent=`${offset*1000}ms`;try{localStorage.setItem('pulse-offset',String(offset))}catch{}});try{offset=Math.max(-.15,Math.min(.15,Number(localStorage.getItem('pulse-offset'))||0));$<HTMLInputElement>('#offset').value=String(offset*1000);$('#value').textContent=`${offset*1000}ms`}catch{}
@@ -207,23 +208,27 @@ function draw(){
  requestAnimationFrame(draw);
  // Start every frame in CSS coordinates; character transforms cannot accumulate.
  g.setTransform(pixelX,0,0,pixelY,0,0);
- const now=audio?.currentTime??0,t=running?(learning?-INTRO_BEATS*BEAT:now-beginning-INTRO_BEATS*BEAT):0,progress=Math.max(0,t/BEAT);
+ const now=audio?.currentTime??0,song=running&&!learning?now-beginning:resultShown?endedAt:0,frame=position(song),beat=frame.beat;
+ const t=learning?-4:song-4,progress=learning?0:Math.max(0,frame.index-INTRO_BEATS+frame.phase);
  const stage=stages.reduce((v,s,i)=>combo>=s.at?i:v,0),style=stages[stage],accent=style.color;
  const gentle=reducedMotion.matches;
  g.fillStyle=style.bg;g.fillRect(0,0,w,h);
  // All scenery remains behind the beat rings and uses the audio clock.
- drawBackdrop(g,w,h,stage,accent,now-beginning,gentle);
+ const mix=beat.kind==='bridge'?(beat.local+frame.phase)/4:1;
+ if(beat.kind==='bridge'){g.save();g.globalAlpha=1-mix;drawField(g,w,h,beat.stage-1,stage,accent,song,gentle,1-mix);g.restore()}
+ g.save();g.globalAlpha=mix;drawField(g,w,h,beat.stage,stage,accent,song,gentle,mix);g.restore();
+ fireworks(g,w,h,now-beginning-finale,gentle);
  ripples=ripples.filter(wave=>now-wave.time<wave.life);
  drawRipples(g,w,h,now,ripples,gentle);
  const y=h*.64,spacing=w*.22,x=w*.28;
  g.strokeStyle=accent+'0b';g.lineWidth=1;for(let i=0;i<14;i++){g.beginPath();g.moveTo(0,y+i*22);g.lineTo(w,y+i*22);g.stroke()}
  if(stage>=6){g.strokeStyle=accent+'12';for(let i=-3;i<5;i++){g.beginPath();g.moveTo(w*.5,y);g.lineTo(w*.5+i*w*.3,h);g.stroke()}}
- for(let i=-2;i<6;i++){const px=x+(i-(progress%1))*spacing;g.fillStyle=i===1?accent:'#515667';g.fillRect(px-26*WORLD_SCALE,y+Math.sin(i)*9*WORLD_SCALE,52*WORLD_SCALE,10*WORLD_SCALE);if(stage>=4){g.fillStyle=accent+'13';g.fillRect(px-26*WORLD_SCALE,y+10*WORLD_SCALE,52*WORLD_SCALE,h-y)}}
- const phase=((t%BEAT)+BEAT)%BEAT/BEAT;
+ for(let i=-2;i<6;i++){const px=x+(i-(progress%1))*spacing;g.fillStyle=i===1?accent:'#515667';platform(g,px,y,WORLD_SCALE,beat.kind==='bridge'&&i<6-8*mix?beat.stage-1:beat.stage,i===1?accent:'#515667',stage)}
+ const phase=learning?0:frame.phase;
  // Beat rings always retain position, contrast and timing in all stages.
  g.strokeStyle=accent;g.lineWidth=3;g.beginPath();g.arc(x,y-70*WORLD_SCALE,(18+(1-phase)*(Math.min(58,w*.15)-18))*WORLD_SCALE,0,Math.PI*2);g.stroke();g.globalAlpha=.4;g.beginPath();g.arc(x,y-70*WORLD_SCALE,18*WORLD_SCALE,0,Math.PI*2);g.stroke();g.globalAlpha=1;
- const introMotion=running&&t<0&&hits===0,practicing=introMotion&&now<practiceLanding&&now>=practiceJump,age=practicing?now-practiceJump:introMotion?-10:now-jump;
- const duration=practicing?practiceLanding-practiceJump:introMotion?BEAT:Math.max(.05,landing-jump),p=Math.min(1,Math.max(0,age/duration));
+ const introMotion=running&&(learning||beat.kind==='intro'||beat.kind==='bridge'),practicing=introMotion&&now<practiceLanding&&now>=practiceJump&&now-jump>now-practiceJump,age=practicing?now-practiceJump:learning?-10:now-jump;
+ const duration=practicing?practiceLanding-practiceJump:Math.max(.05,landing-jump),p=Math.min(1,Math.max(0,age/duration));
  const airborne=age>=0&&age<duration,flight=airborne?Math.sin(p*Math.PI):0;
  const extra=now>=secondJump&&now<landing&&secondJump>jump?Math.sin((now-secondJump)/(landing-secondJump)*Math.PI):0;
  const jumpHeight=(gentle?flight*24+extra*10:flight*64+extra*34)*WORLD_SCALE;
@@ -247,7 +252,7 @@ function draw(){
  if(stage>=7){g.fillStyle=accent;g.fillRect(-9,-42,3,3);g.fillRect(0,-45,3,3);g.fillRect(9,-42,3,3)}g.restore();
  g.textAlign='center';g.fillStyle=accent;g.font='bold 16px monospace';
  if(running){
-  if(t<0){
+  if(learning||beat.kind==='intro'){
    const counting=!learning&&now>=beginning&&t>=-4*BEAT;
    g.font=counting?'bold 36px monospace':'bold 16px monospace';
    g.fillText(counting?String(Math.max(1,Math.ceil(-t/BEAT))):'TAP',w/2,h*.32);
@@ -255,11 +260,11 @@ function draw(){
    $('#hint').textContent=counting?(t>=-BEAT?'次の拍から本番!':'そのまま 4 → 3 → 2 → 1'):learning?'タップでジャンプ!':'拍に合わせてタップ · 練習';
   }
   else{
-   $('#hint').textContent=`${stage+1} / 8 · ${style.name}`;
+   $('#hint').textContent=beat.kind==='bridge'?`${levels[beat.stage].name} → ${Math.round(60/beat.span)} BPM`:`${beat.stage+1} / 5 · ${levels[beat.stage].name} · ${levels[beat.stage].bpm} BPM`;
    if(now<feedbackUntil)g.fillText(flash,w/2,h*.32);else if(t<.35){g.font='bold 28px monospace';g.fillText('TAP!',w/2,h*.32)}
-   for(let n=0;n<TOTAL;n++){if(t>n*BEAT+WINDOW+offset&&!judged.has(n)){judged.add(n);if(combo>0)breakCombo();updateStats()}}
-   if(t>=TOTAL*BEAT&&!resultShown)showResult();if(resultShown)$('#hint').textContent='FINALE · おつかれさま';if(t>=(TOTAL+OUTRO_BEATS)*BEAT)finish();
+   for(const b of targets){if(song>b.at+windowFor(b)+offset&&!judged.has(b.hit)){judged.add(b.hit);if(combo>0)breakCombo();updateStats()}}
+   if(song>=finale+.55&&!resultShown)showResult();if(resultShown)$('#hint').textContent='FINALE · 旅の終わり';if(song>=journeyDuration)finish();
   }
  }
- g.fillStyle='#ffffff20';g.fillRect(24,h-108,w-48,3);g.fillStyle=accent;g.fillRect(24,h-108,(w-48)*Math.min(1,progress/TOTAL),3);
+ g.fillStyle='#ffffff20';g.fillRect(24,h-108,w-48,3);g.fillStyle=accent;g.fillRect(24,h-108,(w-48)*Math.min(1,song/journeyDuration),3);
 }draw();
