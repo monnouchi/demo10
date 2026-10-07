@@ -8,6 +8,8 @@ patterns = {
 '0':'01110 10001 10011 10101 11001 10001 01110','1':'00100 01100 00100 00100 00100 00100 01110','2':'01110 10001 00001 00010 00100 01000 11111','3':'11110 00001 00001 01110 00001 00001 11110','4':'00010 00110 01010 10010 11111 00010 00010','5':'11111 10000 10000 11110 00001 00001 11110','6':'01110 10000 10000 11110 10001 10001 01110','7':'11111 00001 00010 00100 01000 01000 01000','8':'01110 10001 10001 01110 10001 10001 01110','9':'01110 10001 10001 01111 00001 00001 01110',
 '/':'00001 00001 00010 00100 01000 10000 10000',':':'00000 00100 00100 00000 00100 00100 00000','.':'00000 00000 00000 00000 00000 00100 00100','!':'00100 00100 00100 00100 00100 00000 00100','?':'01110 10001 00001 00010 00100 00000 00100','-':'00000 00000 00000 11111 00000 00000 00000','+':'00000 00100 00100 11111 00100 00100 00000','%':'11001 11010 00100 01000 10110 00110 00000',
 }
+# Grave accent above the existing U; lowercase uses the same pixel capitals.
+patterns['Ù']='01000 00100 '+patterns['U']
 fb=FontBuilder(1000,isTTF=True)
 names={ch:'g'+str(ord(ch)) for ch in patterns}
 order=['.notdef','space']+list(names.values());fb.setupGlyphOrder(order)
@@ -18,7 +20,7 @@ for name in order:
  for row,bits in enumerate(rows):
   for col,bit in enumerate(bits):
    if bit!='1':continue
-   x=col*100;y=(6-row)*100
+   x=col*100;y=(len(rows)-1-row)*100
    pen.moveTo((x,y));pen.lineTo((x,y+90));pen.lineTo((x+90,y+90));pen.lineTo((x+90,y));pen.closePath()
  glyphs[name]=pen.glyph();metrics[name]=(600,0)
 for ch,name in names.items():
@@ -26,5 +28,5 @@ for ch,name in names.items():
  if ch.isalpha():cmap[ord(ch.lower())]=name
 fb.setupCharacterMap(cmap);fb.setupGlyf(glyphs);fb.setupHorizontalMetrics(metrics);fb.setupHorizontalHeader(ascent=800,descent=-200)
 fb.setupNameTable({'familyName':'Pulse Pixel','styleName':'Regular','uniqueFontIdentifier':'PulseHop-Pixel-1','fullName':'Pulse Pixel','psName':'PulsePixel','version':'Version 1.0','copyright':'Original pixel alphabet created for Pulse Hop, 2026.'})
-fb.setupOS2(sTypoAscender=800,sTypoDescender=-200,usWinAscent=800,usWinDescent=200,sxHeight=700,sCapHeight=700);fb.setupPost();fb.setupMaxp();fb.font.flavor='woff2'
+fb.setupOS2(sTypoAscender=800,sTypoDescender=-200,usWinAscent=1000,usWinDescent=200,sxHeight=700,sCapHeight=700);fb.setupPost();fb.setupMaxp();fb.font.flavor='woff2'
 out=Path(sys.argv[1] if len(sys.argv)>1 else 'public/fonts/pulse-pixel.woff2');out.parent.mkdir(parents=True,exist_ok=True);fb.save(out);print(out,out.stat().st_size)
