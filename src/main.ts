@@ -1,4 +1,5 @@
 import './style.css';
+import {IntroCalibration} from './calibration';
 import {resultCard,saveCard,publicURL,type RunResult} from './share';
 import {drawBuddy} from './character';
 import {drawPerfectFinale,drawStageEntry} from './celebration';
@@ -14,9 +15,11 @@ const canvas=$<HTMLCanvasElement>('canvas'), g=canvas.getContext('2d')!;
 const panel=$('#panel'), start=$<HTMLButtonElement>('#start'), message=$('#message'),share=$<HTMLButtonElement>('#share');
 let runVersion=0,card:File|null=null,result:RunResult|null=null,sharing=false,saveOnly=false;
 const WORLD_SCALE=.85;
-const BEAT=.5, INTRO_BEATS=8, TOTAL=300;
+const BEAT=journey[0].span, INTRO_BEATS=8, TOTAL=300;
 let audio:AudioContext, master:GainNode, voices:OscillatorNode[]=[], gains:GainNode[]=[], noise:AudioBufferSourceNode, noiseGain:GainNode, noiseFilter:BiquadFilterNode;
 let resultShown=false,learning=false,endedAt=0;
+let calibration=new IntroCalibration(false,journey[0].span);
+function freezeCalibration(elapsed:number){if(calibration.done||elapsed<targets[0].at-windowFor(targets[0])-.02)return;const bias=calibration.finish();if(bias!==null){offset=bias;try{localStorage.setItem('pulse-offset',String(offset))}catch{}}}
 let running=false, muted=false, beginning=0, scheduled=0, combo=0,best=0,hits=0,perfectHits=0,goodHits=0,offset=0,lastInput=-1,jump=-10,flash='', feedbackUntil=0,feedbackStarted=-10;
 let successful=new Set<number>(), extras=new Set<number>(), landing=-10, secondJump=-10;
 let ripples:Ripple[]=[];let shardsTaken=new Set<number>(),shardBursts:ShardBurst[]=[];
@@ -156,7 +159,7 @@ function silence(){
  for(let i=0;i<gains.length;i++){gains[i].gain.cancelScheduledValues(audio.currentTime);gains[i].gain.setValueAtTime(0,audio.currentTime);voices[i].frequency.cancelScheduledValues(audio.currentTime)}
  noiseGain.gain.cancelScheduledValues(audio.currentTime);noiseGain.gain.setValueAtTime(0,audio.currentTime);noiseFilter.frequency.cancelScheduledValues(audio.currentTime);
 }
-async function begin(){if(running&&!resultShown)return;if(running)finish();resultShown=false;endedAt=0;runVersion++;card=null;result=null;sharing=false;share.hidden=true;share.disabled=true;$('#share-status').textContent='';start.disabled=true;try{if(!audio)initAudio();await audio.resume();master.gain.setValueAtTime(muted?0:.55,audio.currentTime);silence();judged.clear();successful.clear();extras.clear();ripples=[];shardsTaken.clear();shardBursts=[];guests=[];guestOrdinal=0;guestLast=-10;guestLastKind=-1;dancerChain=0;dancerLast=-2;crowd=0;crowdAt=audio.currentTime;practiceBeats.clear();practiceJump=practiceLanding=lastPractice=practiceFeedback=-10;secondJump=landing=-10;harmonyLevels.clear();lastHarmonyLevel=0;combo=best=hits=perfectHits=goodHits=scheduled=0;worldLosses.clear();growthPoints=worldFrom=0;worldChanged=lastWorldLoss=-10;layerGains.forEach(layer=>{layer.gain.cancelScheduledValues(audio.currentTime);layer.gain.setValueAtTime(0,audio.currentTime)});lastInput=-1;jump=feedbackStarted=-10;feedbackUntil=0;beginning=audio.currentTime+.05;learning=true;running=true;panel.hidden=true;$('main').dataset.result='false';panel.dataset.perfect='false';panel.dataset.result='false';$('#precision').hidden=true;start.blur();updateStats();timer=window.setInterval(schedule,25);schedule()}catch{message.textContent='音の起動に失敗しました。もう一度お試しください。'}finally{start.disabled=false}}
+async function begin(){if(running&&!resultShown)return;if(running)finish();resultShown=false;endedAt=0;runVersion++;card=null;result=null;sharing=false;share.hidden=true;share.disabled=true;$('#share-status').textContent='';start.disabled=true;try{if(!audio)initAudio();await audio.resume();master.gain.setValueAtTime(muted?0:.55,audio.currentTime);silence();judged.clear();successful.clear();extras.clear();ripples=[];shardsTaken.clear();shardBursts=[];guests=[];guestOrdinal=0;guestLast=-10;guestLastKind=-1;dancerChain=0;dancerLast=-2;crowd=0;crowdAt=audio.currentTime;practiceBeats.clear();practiceJump=practiceLanding=lastPractice=practiceFeedback=-10;secondJump=landing=-10;harmonyLevels.clear();lastHarmonyLevel=0;combo=best=hits=perfectHits=goodHits=scheduled=0;worldLosses.clear();growthPoints=worldFrom=0;worldChanged=lastWorldLoss=-10;layerGains.forEach(layer=>{layer.gain.cancelScheduledValues(audio.currentTime);layer.gain.setValueAtTime(0,audio.currentTime)});lastInput=-1;jump=feedbackStarted=-10;feedbackUntil=0;beginning=audio.currentTime+.05;calibration=new IntroCalibration(muted,BEAT);learning=true;running=true;panel.hidden=true;$('main').dataset.result='false';panel.dataset.perfect='false';panel.dataset.result='false';$('#precision').hidden=true;start.blur();updateStats();timer=window.setInterval(schedule,25);schedule()}catch{message.textContent='音の起動に失敗しました。もう一度お試しください。'}finally{start.disabled=false}}
 function allPerfect(){return !learning&&(running?audio.currentTime-beginning:endedAt)>=finale&&perfectHits===300&&goodHits===0&&hits===300&&judged.size===300}
 function showResult(interrupted=false){if(resultShown&&!interrupted)return;const completed=(running?audio.currentTime-beginning:endedAt)>=finale&&judged.size===300,stopped=interrupted&&!completed,perfect=completed&&allPerfect();resultShown=true;panel.hidden=false;$('main').dataset.result='true';panel.dataset.perfect=String(perfect);panel.dataset.result='true';$('h1').textContent=stopped?'ひと休み。もう一度？':perfect?'ALL PERFECT!':hits>=225?'世界が、色づいた！':'もう一歩、拍に乗ろう。';message.textContent=stopped?'画面を離れたため停止しました。':`${hits} / 300 HIT · BEST COMBO ${best}`;$('#precision').hidden=false;$('#perfect-count').textContent=String(perfectHits);$('#good-count').textContent=String(goodHits);$('#miss-count').textContent=String(Math.max(0,judged.size-hits));start.textContent='もう一度';result=Object.freeze({hits,perfect:perfectHits,good:goodHits,miss:Math.max(0,judged.size-hits),best,completed,allPerfect:perfect});share.hidden=false;share.disabled=true;share.textContent='画像を準備中';void prepareCard(result,runVersion)}
 async function prepareCard(snapshot:RunResult,version:number){try{const file=await resultCard(snapshot);if(version!==runVersion||!resultShown||result!==snapshot)return;card=file;saveOnly=true;try{saveOnly=!(typeof navigator.share==='function'&&typeof navigator.canShare==='function'&&navigator.canShare({files:[file]}))}catch{}share.textContent=saveOnly?'PNGを保存':'画像を共有';share.disabled=false}catch{if(version===runVersion&&result===snapshot){share.textContent='画像を再作成';share.disabled=false;$('#share-status').textContent='画像を作れませんでした。もう一度お試しください。'}}}
@@ -200,6 +203,7 @@ function inviteGuest(now:number,field:number,hit:number){
 function tap(){
  if(!running||resultShown)return;const now=audio.currentTime;
  if(learning){learning=false;beginning=now+.05;practiceJump=lastPractice=now;practiceLanding=now+.40;practiceFlash='JUMP!';practiceFeedback=now+.3;drum(now,3200,.03,.04);schedule();return}
+ freezeCalibration(now-beginning);
  const song=now-beginning-offset;
  let nearest=targets[0];for(const b of targets)if(Math.abs(song-b.at)<Math.abs(song-nearest.at))nearest=b;
  const error=Math.abs(song-nearest.at),n=nearest.hit;
@@ -211,6 +215,7 @@ function tap(){
  }
  const current=position(song).beat;
  if(current.kind==='intro'||current.kind==='bridge'){
+  if(current.kind==='intro')calibration.tap(now-beginning);
   if(song<-.14||now-lastPractice<.08)return;
   const aligned=Math.abs(song-current.at)<=windowFor(current),id=journey.indexOf(current);
   if(aligned&&practiceBeats.has(id))return;if(aligned)practiceBeats.add(id);
@@ -228,8 +233,8 @@ function tap(){
 }
 function updateStats(){$('#score').textContent=`${String(hits).padStart(3,'0')} / 300`;$('#combo').textContent=`COMBO ${combo}`;const level=worldStage();$('#growth').setAttribute('aria-label',`世界の色づき ${level} / 7 · ${stages[level].name}`);$('#growth').dataset.level=String(level);$('#growth-label').textContent=level===7?'WORLD MAX':'WORLD';document.querySelectorAll<HTMLElement>('#growth i').forEach((tile,i)=>{tile.style.background=i<level?stages[i+1].color:'#83877c';tile.dataset.lit=String(i<level)})}
 start.addEventListener('click',begin);$('main').addEventListener('pointerdown',e=>{if((e.target as HTMLElement).closest('button,label,#panel'))return;e.preventDefault();tap()});window.addEventListener('keydown',e=>{if((e.code==='Space'||e.code==='Enter')&&!(e.target instanceof HTMLInputElement)&&!(e.target instanceof HTMLButtonElement)){e.preventDefault();if(e.repeat)return;if(running&&!resultShown)tap();else void begin()}});
-$('#mute').addEventListener('click',()=>{muted=!muted;if(master)master.gain.setTargetAtTime(muted?0:.55,audio.currentTime,.01);$('#mute').textContent=muted?'♪ OFF':'♪ ON';$('#mute').setAttribute('aria-label',muted?'音をオン':'音をミュート');$('#mute').blur()});
-$<HTMLInputElement>('#offset').addEventListener('input',e=>{offset=Number((e.target as HTMLInputElement).value)/1000;$('#value').textContent=`${offset*1000}ms`;try{localStorage.setItem('pulse-offset',String(offset))}catch{}});try{offset=Math.max(-.15,Math.min(.15,Number(localStorage.getItem('pulse-offset'))||0));$<HTMLInputElement>('#offset').value=String(offset*1000);$('#value').textContent=`${offset*1000}ms`}catch{}
+$('#mute').addEventListener('click',()=>{muted=!muted;if(muted)calibration.mute();if(master)master.gain.setTargetAtTime(muted?0:.55,audio.currentTime,.01);$('#mute').textContent=muted?'♪ OFF':'♪ ON';$('#mute').setAttribute('aria-label',muted?'音をオン':'音をミュート');$('#mute').blur()});
+try{const saved=Number(localStorage.getItem('pulse-offset'));offset=Number.isFinite(saved)?Math.max(-.15,Math.min(.15,saved)):0}catch{}
 document.addEventListener('visibilitychange',()=>{if(document.hidden&&running)finish(!resultShown)});
 let pixelX=1,pixelY=1;
 function resize(){
@@ -256,7 +261,8 @@ function draw(){
  // Start every frame in CSS coordinates; character transforms cannot accumulate.
  g.setTransform(pixelX,0,0,pixelY,0,0);
  const now=audio?.currentTime??0,song=running&&!learning?now-beginning:resultShown?endedAt:0,frame=position(song),beat=frame.beat;
- const t=learning?-4:song-4,progress=learning?0:Math.max(0,frame.index-INTRO_BEATS+frame.phase);
+ const t=learning?-targets[0].at:song-targets[0].at,progress=learning?0:Math.max(0,frame.index-INTRO_BEATS+frame.phase);
+ if(running&&!learning)freezeCalibration(song);
  const stage=worldStage(),visual=visualWorld(now),lo=Math.floor(visual),hi=Math.ceil(visual);
  const blend=(a:string,b:string)=>{const f=visual-lo;return '#'+[1,3,5].map(i=>Math.round(parseInt(a.slice(i,i+2),16)*(1-f)+parseInt(b.slice(i,i+2),16)*f).toString(16).padStart(2,'0')).join('')};
  const style={bg:blend(stages[lo].bg,stages[hi].bg)},accent=blend(stages[lo].color,stages[hi].color);
@@ -320,7 +326,7 @@ function draw(){
    g.font=counting?'bold 36px PulsePixel, monospace':'bold 16px PulsePixel, monospace';
    g.fillText(counting?String(Math.max(1,Math.ceil(-t/BEAT))):'TAP',w/2,h*.32);
    if(now<practiceFeedback){g.font='bold 14px PulsePixel, monospace';g.fillText(practiceFlash,w/2,h*.32+42)}
-   $('#hint').textContent=counting?(t>=-BEAT?'次の拍から本番!':'そのまま 4 → 3 → 2 → 1'):learning?'タップでジャンプ!':'拍に合わせてタップ · 練習';
+   $('#hint').textContent=counting?(t>=-BEAT?'次の拍から本番!':'そのまま 4 → 3 → 2 → 1'):learning?'タップでジャンプ!':'Prelude · 拍に合わせてタップ';
   }
   else{
    $('#hint').textContent=finishing?'FINALE · 走破!':beat.kind==='bridge'?`${levels[beat.stage].name} → ${Math.round(60/beat.span)} BPM`:`${beat.stage+1} / 5 · ${levels[beat.stage].name} · ${levels[beat.stage].bpm} BPM`;

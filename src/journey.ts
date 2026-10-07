@@ -9,7 +9,7 @@ export type Beat={at:number,span:number,stage:number,local:number,hit:number,kin
 export const journey:Beat[]=[];
 let at=0;
 function add(kind:Beat['kind'],stage:number,local:number,span:number,hit=-1){journey.push({at,span,stage,local,hit,kind});at+=span}
-for(let i=0;i<8;i++)add('intro',0,i,.5);
+for(let i=0;i<8;i++)add('intro',0,i,60/levels[0].bpm);
 for(let stage=0;stage<5;stage++){
  if(stage>0)for(let i=0;i<4;i++){const bpm=levels[stage-1].bpm+(levels[stage].bpm-levels[stage-1].bpm)*(i+1)/4;add('bridge',stage,i,60/bpm)}
  for(let i=0;i<60;i++)add('main',stage,i,60/levels[stage].bpm,stage*60+i);
