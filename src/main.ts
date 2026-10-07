@@ -1,10 +1,11 @@
 import './style.css';
+import {roadAt,drawRoad,stumblePose} from './transition';
 import {IntroCalibration} from './calibration';
 import {resultCard,saveCard,publicURL,type RunResult} from './share';
 import {drawBuddy} from './character';
 import {drawPerfectFinale,drawStageEntry} from './celebration';
 import {hasShard,shardPosition,drawShards,type ShardBurst} from './shards';
-import {journey,targets,levels,duration as journeyDuration,finale,position,pitch,windowFor,offWindow,} from './journey';
+import {journey,targets,levels,duration as journeyDuration,finale,position,pitch,windowFor,offWindow,type Beat,} from './journey';
 import {drawField,platform,fireworks} from './field';
 import {drawRipples,type Ripple} from './ripple';
 import {drawFeedback,drawHopTrail} from './feedback';
@@ -55,6 +56,8 @@ const basicTriads:readonly (readonly number[])[]=[
 const sevenths=[71,64,60,65,71,60,67,69,64,63,65,65,67,60,65];
 const ninths=[74,67,64,69,74,64,71,72,67,67,60,69,71,64,69];
 let harmonyLevels=new Map<number,number>(),lastHarmonyLevel=0;
+let stumbleAt=-10;
+let jumpBeat:Beat|null=null;
 let growthPoints=0,worldFrom=0,worldChanged=-10,lastWorldLoss=-10;
 const layerGains:GainNode[]=[];
 const worldLosses=new Set<number>();
@@ -66,7 +69,7 @@ function changeGrowth(points:number){
  layerGains.forEach((layer,i)=>{const threshold=i===2?1:i===1?2:4,param=layer.gain;param.cancelScheduledValues(now);param.setValueAtTime(param.value,now);param.linearRampToValueAtTime(stage>=threshold?strength:0,now+.35)});
 }
 function breakCombo(hit?:number){
- combo=0;if(hit!==undefined){if(worldLosses.has(hit))return;worldLosses.add(hit)}const stage=worldStage();if(stage>0&&audio.currentTime-lastWorldLoss>=1.2){lastWorldLoss=audio.currentTime;changeGrowth(stages[stage-1].at)}
+ combo=0;if(hit!==undefined){if(worldLosses.has(hit))return;worldLosses.add(hit)}stumbleAt=audio.currentTime;const stage=worldStage();if(stage>0&&audio.currentTime-lastWorldLoss>=1.2){lastWorldLoss=audio.currentTime;changeGrowth(stages[stage-1].at)}
  // Existing phrase and note envelopes continue; only layer gain fades.
  lastHarmonyLevel=rewardLevel();
 }
@@ -159,7 +162,7 @@ function silence(){
  for(let i=0;i<gains.length;i++){gains[i].gain.cancelScheduledValues(audio.currentTime);gains[i].gain.setValueAtTime(0,audio.currentTime);voices[i].frequency.cancelScheduledValues(audio.currentTime)}
  noiseGain.gain.cancelScheduledValues(audio.currentTime);noiseGain.gain.setValueAtTime(0,audio.currentTime);noiseFilter.frequency.cancelScheduledValues(audio.currentTime);
 }
-async function begin(){if(running&&!resultShown)return;if(running)finish();resultShown=false;endedAt=0;runVersion++;card=null;result=null;sharing=false;share.hidden=true;share.disabled=true;$('#share-status').textContent='';start.disabled=true;try{if(!audio)initAudio();await audio.resume();master.gain.setValueAtTime(muted?0:.55,audio.currentTime);silence();judged.clear();successful.clear();extras.clear();ripples=[];shardsTaken.clear();shardBursts=[];guests=[];guestOrdinal=0;guestLast=-10;guestLastKind=-1;dancerChain=0;dancerLast=-2;crowd=0;crowdAt=audio.currentTime;practiceBeats.clear();practiceJump=practiceLanding=lastPractice=practiceFeedback=-10;secondJump=landing=-10;harmonyLevels.clear();lastHarmonyLevel=0;combo=best=hits=perfectHits=goodHits=scheduled=0;worldLosses.clear();growthPoints=worldFrom=0;worldChanged=lastWorldLoss=-10;layerGains.forEach(layer=>{layer.gain.cancelScheduledValues(audio.currentTime);layer.gain.setValueAtTime(0,audio.currentTime)});lastInput=-1;jump=feedbackStarted=-10;feedbackUntil=0;beginning=audio.currentTime+.05;calibration=new IntroCalibration(muted,BEAT);learning=true;running=true;panel.hidden=true;$('main').dataset.screen='play';$('main').dataset.result='false';panel.dataset.perfect='false';panel.dataset.result='false';$('#precision').hidden=true;start.blur();updateStats();timer=window.setInterval(schedule,25);schedule()}catch{message.textContent='音の起動に失敗しました。もう一度お試しください。'}finally{start.disabled=false}}
+async function begin(){if(running&&!resultShown)return;if(running)finish();resultShown=false;endedAt=0;runVersion++;card=null;result=null;sharing=false;share.hidden=true;share.disabled=true;$('#share-status').textContent='';start.disabled=true;try{if(!audio)initAudio();await audio.resume();master.gain.setValueAtTime(muted?0:.55,audio.currentTime);silence();judged.clear();successful.clear();extras.clear();ripples=[];shardsTaken.clear();shardBursts=[];guests=[];guestOrdinal=0;guestLast=-10;guestLastKind=-1;dancerChain=0;dancerLast=-2;crowd=0;crowdAt=audio.currentTime;practiceBeats.clear();practiceJump=practiceLanding=lastPractice=practiceFeedback=-10;secondJump=landing=-10;harmonyLevels.clear();lastHarmonyLevel=0;combo=best=hits=perfectHits=goodHits=scheduled=0;worldLosses.clear();stumbleAt=-10;jumpBeat=null;growthPoints=worldFrom=0;worldChanged=lastWorldLoss=-10;layerGains.forEach(layer=>{layer.gain.cancelScheduledValues(audio.currentTime);layer.gain.setValueAtTime(0,audio.currentTime)});lastInput=-1;jump=feedbackStarted=-10;feedbackUntil=0;beginning=audio.currentTime+.05;calibration=new IntroCalibration(muted,BEAT);learning=true;running=true;panel.hidden=true;$('main').dataset.screen='play';$('main').dataset.result='false';panel.dataset.perfect='false';panel.dataset.result='false';$('#precision').hidden=true;start.blur();updateStats();timer=window.setInterval(schedule,25);schedule()}catch{message.textContent='音の起動に失敗しました。もう一度お試しください。'}finally{start.disabled=false}}
 function allPerfect(){return !learning&&(running?audio.currentTime-beginning:endedAt)>=finale&&perfectHits===300&&goodHits===0&&hits===300&&judged.size===300}
 function showResult(interrupted=false){if(resultShown&&!interrupted)return;const completed=(running?audio.currentTime-beginning:endedAt)>=finale&&judged.size===300,stopped=interrupted&&!completed,perfect=completed&&allPerfect();resultShown=true;panel.hidden=false;$('main').dataset.screen='result';$('main').dataset.result='true';panel.dataset.perfect=String(perfect);panel.dataset.result='true';$('h1').textContent=stopped?'ひと休み。もう一度？':perfect?'ALL PERFECT!':hits>=225?'世界が、色づいた！':'もう一歩、拍に乗ろう。';message.textContent=stopped?'画面を離れたため停止しました。':`${hits} / 300 HIT · BEST COMBO ${best}`;$('#precision').hidden=false;$('#perfect-count').textContent=String(perfectHits);$('#good-count').textContent=String(goodHits);$('#miss-count').textContent=String(Math.max(0,judged.size-hits));start.textContent='もう一度';result=Object.freeze({hits,perfect:perfectHits,good:goodHits,miss:Math.max(0,judged.size-hits),best,completed,allPerfect:perfect});share.hidden=false;share.disabled=true;share.textContent='画像を準備中';void prepareCard(result,runVersion)}
 async function prepareCard(snapshot:RunResult,version:number){try{const file=await resultCard(snapshot);if(version!==runVersion||!resultShown||result!==snapshot)return;card=file;saveOnly=true;try{saveOnly=!(typeof navigator.share==='function'&&typeof navigator.canShare==='function'&&navigator.canShare({files:[file]}))}catch{}share.textContent=saveOnly?'PNGを保存':'画像を共有';share.disabled=false}catch{if(version===runVersion&&result===snapshot){share.textContent='画像を再作成';share.disabled=false;$('#share-status').textContent='画像を作れませんでした。もう一度お試しください。'}}}
@@ -209,12 +212,13 @@ function tap(){
  const error=Math.abs(song-nearest.at),n=nearest.hit;
  // Main targets win before practice/debounce, including early inputs at every boundary.
  if(error<=windowFor(nearest)){
-  if(judged.has(n))return;lastInput=now;judged.add(n);successful.add(n);hits++;combo++;changeGrowth(Math.min(48,growthPoints+1));best=Math.max(best,combo);jump=now;secondJump=-10;
+  if(judged.has(n))return;lastInput=now;judged.add(n);successful.add(n);hits++;combo++;stumbleAt=-10;changeGrowth(Math.min(48,growthPoints+1));best=Math.max(best,combo);jumpBeat=nearest;jump=now;secondJump=-10;
   landing=beginning+nearest.at+nearest.span+offset;flash=error<nearest.span*.13?'PERFECT':'GOOD';if(flash==='PERFECT')perfectHits++;else goodHits++;feedbackStarted=now;feedbackUntil=now+.30;
   articulate(chordToneNear(leadMidi(journey.indexOf(nearest))+12,n),now);updateStats();return;
  }
  const current=position(song).beat;
- if(current.kind==='intro'||current.kind==='bridge'){
+ if(current.kind==='bridge'){if(!drumCues.some(c=>now<c.end&&now+.025>c.start)&&now-lastPractice>=.18){lastPractice=now;drum(now,2800,.025,.035)}return}
+ if(current.kind==='intro'){
   if(current.kind==='intro')calibration.tap(now-beginning);
   if(song<-.14||now-lastPractice<.08)return;
   const aligned=Math.abs(song-current.at)<=windowFor(current),id=journey.indexOf(current);
@@ -295,33 +299,43 @@ function draw(){
  const x=w*(.28+(finishing?.22*Math.min(1,Math.max(0,finishBeat/4)):0));
  g.strokeStyle=accent+'0b';g.lineWidth=1;for(let i=0;i<14;i++){g.beginPath();g.moveTo(0,y+i*22);g.lineTo(w,y+i*22);g.stroke()}
  if(stage>=6){g.strokeStyle=accent+'12';for(let i=-3;i<5;i++){g.beginPath();g.moveTo(w*.5,y);g.lineTo(w*.5+i*w*.3,h);g.stroke()}}
- for(let i=-2;i<6;i++){const px=x+(i-(progress%1))*spacing;g.fillStyle=i===1?accent:'#515667';platform(g,px,y,WORLD_SCALE,beat.kind==='bridge'&&i<6-8*mix?beat.stage-1:beat.stage,i===1?accent:'#515667',stage)}
+ const road=roadAt(beat,frame.phase,x,spacing);
+ if(road){
+  drawRoad(g,w,y,road.entry,road.exit,WORLD_SCALE,accent);
+  // Stable launch/landing pads make the road handoff readable even on late taps.
+  if(beat.kind==='main'&&beat.local<2)platform(g,x,y,WORLD_SCALE,beat.stage,accent,stage);
+  for(let i=1;i<6;i++){const px=road.exit+i*spacing;if(px<w+30)platform(g,px,y,WORLD_SCALE,beat.kind==='bridge'?beat.stage:Math.min(4,beat.stage+(beat.local===59?1:0)),'#515667',stage)}
+  for(let i=1;i<6;i++){const px=road.entry-i*spacing;if(px>-30)platform(g,px,y,WORLD_SCALE,beat.kind==='bridge'?beat.stage-1:beat.stage,Math.abs(px-x)<spacing*.5?accent:'#515667',stage)}
+ }else for(let i=-2;i<6;i++){const px=x+(i-(progress%1))*spacing;platform(g,px,y,WORLD_SCALE,beat.stage,i===1?accent:'#515667',stage)}
  if(finishing)platform(g,x,y,WORLD_SCALE,4,accent,stage);
- if(!finishing)drawHopTrail(g,w,h,x,y,now,jump,secondJump,landing,Math.min(1,w/390,h/664)*WORLD_SCALE,Math.min(7,stage+beat.stage),beat.stage,accent,gentle);
+ if(!finishing&&beat.kind!=='bridge')drawHopTrail(g,w,h,x,y,now,jump,secondJump,landing,Math.min(1,w/390,h/664)*WORLD_SCALE,Math.min(7,stage+beat.stage),beat.stage,accent,gentle);
  const phase=learning?0:frame.phase;
- const introMotion=running&&(learning||beat.kind==='intro'||beat.kind==='bridge'),practicing=introMotion&&now<practiceLanding&&now>=practiceJump&&now-jump>now-practiceJump,age=practicing?now-practiceJump:learning?-10:now-jump;
+ const introMotion=running&&(learning||beat.kind==='intro'),practicing=introMotion&&now<practiceLanding&&now>=practiceJump&&now-jump>now-practiceJump,age=practicing?now-practiceJump:learning?-10:now-jump;
  const duration=practicing?practiceLanding-practiceJump:Math.max(.05,landing-jump),p=Math.min(1,Math.max(0,age/duration));
  const airborne=age>=0&&age<duration,flight=airborne?Math.sin(p*Math.PI):0;
  const extra=now>=secondJump&&now<landing&&secondJump>jump?Math.sin((now-secondJump)/(landing-secondJump)*Math.PI):0;
  const victory=finishing&&finishBeat>=4&&finishBeat<6?Math.sin((finishBeat-4)/2*Math.PI):0;
  const jumpHeight=(finishing?(gentle?victory*18:victory*84):(gentle?flight*24+extra*(hasShard(beat)?24:10):flight*64+extra*(hasShard(beat)?52:34)))*WORLD_SCALE;
- const move=trick(beat.stage,beat.local,p,extra,stage,gentle);
+ const moveBeat=airborne&&!practicing&&jumpBeat?jumpBeat:beat;
+ const move=trick(moveBeat.stage,moveBeat.local,p,extra,stage,gentle);
+ const runningRoad=beat.kind==='bridge'&&!airborne,runStep=Math.sin((beat.local+frame.phase)*Math.PI*2),stumble=stumblePose(now-stumbleAt,gentle);
  const characterScale=Math.min(1,w/390,h/664)*WORLD_SCALE;
  if(hasShard(beat)&&extras.has(beat.hit)&&!shardsTaken.has(beat.hit)&&extra>0){const crystal=shardPosition(frame.index-8,progress,w,h,characterScale,WORLD_SCALE,gentle),head=y-6*WORLD_SCALE-jumpHeight-40*characterScale;crystal.x+=(x-5*characterScale-crystal.x)*Math.min(1,extra*3);
   if(Math.abs(crystal.x-x)<16*characterScale+4&&head<=crystal.y+(gentle?1.5:4)){shardsTaken.add(beat.hit);shardBursts.push({time:now,x:crystal.x,y:crystal.y,color:accent});shardBursts=shardBursts.slice(-3);const wave=ripples.at(-1);if(wave){wave.time=now;wave.x=crystal.x/w;wave.y=crystal.y/h}}
  }
  shardBursts=shardBursts.filter(b=>now-b.time<.3);if(!finishing&&!learning)drawShards(g,w,h,progress,characterScale,WORLD_SCALE,gentle,shardsTaken,now,shardBursts,accent,{hit:beat.hit,x:x-5*characterScale,amount:extras.has(beat.hit)?Math.min(1,extra*3):0});
  // Beat rings always retain position, contrast and timing in all stages.
- g.strokeStyle=accent;g.lineWidth=3;g.beginPath();g.arc(x,y-70*WORLD_SCALE,(18+(1-phase)*(Math.min(58,w*.15)-18))*WORLD_SCALE,0,Math.PI*2);g.stroke();g.globalAlpha=.4;g.beginPath();g.arc(x,y-70*WORLD_SCALE,18*WORLD_SCALE,0,Math.PI*2);g.stroke();g.globalAlpha=1;
- g.save();g.translate(x,y-6*WORLD_SCALE-jumpHeight);
+ g.save();g.globalAlpha=beat.kind==='bridge'?Math.max(0,beat.local+frame.phase-3):1;g.strokeStyle=accent;g.lineWidth=3;g.beginPath();g.arc(x,y-70*WORLD_SCALE,(18+(1-phase)*(Math.min(58,w*.15)-18))*WORLD_SCALE,0,Math.PI*2);g.stroke();g.globalAlpha=.4*(beat.kind==='bridge'?Math.max(0,beat.local+frame.phase-3):1);g.beginPath();g.arc(x,y-70*WORLD_SCALE,18*WORLD_SCALE,0,Math.PI*2);g.stroke();g.restore();
+ g.save();g.translate(x,y-6*WORLD_SCALE-jumpHeight-(runningRoad&&!gentle?Math.abs(runStep)*1.5:0));
  g.scale(characterScale,characterScale);
  if(airborne&&!finishing){g.rotate(gentle?0:hasShard(beat)?Math.sin(p*Math.PI)*.05:move.angle);g.transform(1,0,hasShard(beat)?0:move.lean,1,0,0)}
- const squash=gentle||hasShard(beat)?0:airborne?Math.sin(p*Math.PI)*.10:(now>=landing&&now-landing<.12?-.15*Math.sin((now-landing)/.12*Math.PI):0);
+ if(runningRoad)g.rotate(gentle?.025:.07);g.rotate(stumble.angle);g.scale(1+stumble.squash,1-stumble.squash);
+ const squash=runningRoad||gentle||hasShard(beat)?0:airborne?Math.sin(p*Math.PI)*.10:(now>=landing&&now-landing<.12?-.15*Math.sin((now-landing)/.12*Math.PI):0);
  g.scale(1-Math.max(-.15,Math.min(.10,squash)),1+Math.max(-.15,Math.min(.10,squash)));
  g.fillStyle=accent;
  if(stage>=4&&!gentle){g.shadowColor=accent;g.shadowBlur=stage>=7?20:12}
- const celebrate=finishing&&finishBeat>=4||!finishing&&airborne&&move.arms===2;
- drawBuddy(g,accent,style.bg,stage===0,celebrate,flight*4+extra*8+(airborne?move.arms*5:0),airborne&&!finishing?move.feet:0,stage>=1);
+ const celebrate=stumble.angle===0&&(finishing&&finishBeat>=4||!finishing&&airborne&&move.arms===2);
+ drawBuddy(g,accent,style.bg,stage===0,celebrate,runningRoad?2+runStep:flight*4+extra*8+(airborne?move.arms*5:0),runningRoad?runStep*(gentle?.7:3):airborne&&!finishing?move.feet:0,stage>=1);
  if(stage>=7&&!hasShard(beat)){g.fillStyle=accent;g.fillRect(-9,-42,3,3);g.fillRect(0,-45,3,3);g.fillRect(9,-42,3,3)}g.restore();
  if(running&&!learning)drawStageEntry(g,w,beat.kind,beat.local,frame.phase,levels[beat.stage].name);
  g.textAlign='center';g.fillStyle=accent;g.font='bold 16px PulsePixel, monospace';
@@ -332,7 +346,7 @@ function draw(){
    if(learning||beat.local<4){g.font='24px PulsePixel, monospace';g.fillStyle='#f3f5e9';g.fillText('Prelude',w/2,154);g.fillStyle=accent;g.font=counting?'36px PulsePixel, monospace':'16px PulsePixel, monospace'}
    g.fillText(counting?String(Math.max(1,Math.ceil(-t/BEAT))):'TAP',w/2,h*.32);
 
-   $('#hint').textContent=counting?(t>=-BEAT?'次の拍からスタート':'そのまま、拍に合わせて'):learning?'タップでジャンプ':'Prelude · 輪に合わせてタップ';
+   $('#hint').textContent=counting?(t>=-BEAT?'次の拍からスタート':'そのまま、拍に合わせて'):learning?'タップでジャンプ':'Prelude · リズムに合わせて';
   }
   else{
    $('#hint').textContent=finishing?'FINALE':beat.kind==='bridge'?`${levels[beat.stage].name} → ${Math.round(60/beat.span)} BPM`:`${beat.stage+1} / 5 · ${levels[beat.stage].name} · ${levels[beat.stage].bpm} BPM`;
