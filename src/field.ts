@@ -24,16 +24,16 @@ export function platform(g:CanvasRenderingContext2D,x:number,y:number,scale:numb
  if(rich>=4){g.globalAlpha=.08;g.fillRect(x-half,y+16*scale,half*2,60*scale)}
  g.globalAlpha=1;
 }
-export function fireworks(g:CanvasRenderingContext2D,w:number,h:number,time:number,reduced:boolean){
+export function fireworks(g:CanvasRenderingContext2D,w:number,h:number,time:number,reduced:boolean,perfect=false){
  const beat=time/(60/168);if(beat<0||beat>13)return;
  g.save();g.beginPath();g.rect(0,118,w,Math.max(0,h*.52-118));g.clip();
- const colors=['#8bdfff','#e1a5ff','#91ffe1','#fff5b2'];
+ const colors=perfect?['#c1ff88','#ffd588','#8bdfff','#e1a5ff','#ffafcc','#91ffe1','#fff5b2']:['#8bdfff','#e1a5ff','#91ffe1','#fff5b2'];
  // Seven launches, at most three live bursts / 72 dots, lifetime 1.2s.
  const launches=[0,2,4,4.5,5,6.5,8];let active=0;
  for(let b=launches.length-1;b>=0;b--){const age=time-launches[b]*(60/168);if(age<0||age>1.2||active>=3)continue;active++;
-  const p=age/1.2,x=w*[.22,.78,.50,.18,.82,.35,.67][b],y=h*(b===2?.26:.30);g.fillStyle=g.strokeStyle=colors[b%4];g.globalAlpha=(reduced?.40:.60)*(1-p);g.lineWidth=1;g.shadowColor=colors[b%4];g.shadowBlur=reduced?0:5;
+  const p=age/1.2,x=w*[.22,.78,.50,.18,.82,.35,.67][b],y=h*(b===2?.26:.30);g.fillStyle=g.strokeStyle=colors[b%colors.length];g.globalAlpha=(reduced?.40:.60)*(1-p);g.lineWidth=1;g.shadowColor=colors[b%colors.length];g.shadowBlur=reduced?0:5;
   const r=reduced?24:10+(1-(1-p)**2)*Math.min(b===2?110:88,w*(b===2?.28:.23));
-  if(!reduced){g.beginPath();for(let i=0;i<6;i++){const a=i*Math.PI/3,px=x+Math.cos(a)*r*.55,py=y+Math.sin(a)*r*.55;if(i===0)g.moveTo(px,py);else g.lineTo(px,py)}g.closePath();g.stroke()}
+  if(!reduced){g.beginPath();for(let i=0;i<(perfect?10:6);i++){const a=i*Math.PI*2/(perfect?10:6),rr=r*(perfect?(i%2?.35:.72):.55),px=x+Math.cos(a)*rr,py=y+Math.sin(a)*rr;if(i===0)g.moveTo(px,py);else g.lineTo(px,py)}g.closePath();g.stroke()}
   for(let i=0;i<(reduced?8:24);i++){const a=i*Math.PI*2/(reduced?8:24),px=x+Math.cos(a)*r,py=y+Math.sin(a)*r+(reduced?0:p*p*18);g.fillRect(px-2,py-2,4,4);if(!reduced&&i%4===0){g.beginPath();g.moveTo(px,py);g.lineTo(px-Math.cos(a)*12,py-Math.sin(a)*12);g.stroke()}}
  }
  g.restore();

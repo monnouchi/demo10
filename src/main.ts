@@ -1,5 +1,6 @@
 import './style.css';
 import {drawBuddy} from './character';
+import {drawPerfectFinale,drawStageEntry} from './celebration';
 import {hasShard,shardPosition,drawShards,type ShardBurst} from './shards';
 import {journey,targets,levels,duration as journeyDuration,finale,position,pitch,windowFor,offWindow,} from './journey';
 import {drawField,platform,fireworks} from './field';
@@ -14,7 +15,7 @@ const WORLD_SCALE=.85;
 const BEAT=.5, INTRO_BEATS=8, TOTAL=300;
 let audio:AudioContext, master:GainNode, voices:OscillatorNode[]=[], gains:GainNode[]=[], noise:AudioBufferSourceNode, noiseGain:GainNode, noiseFilter:BiquadFilterNode;
 let resultShown=false,learning=false,endedAt=0;
-let running=false, muted=false, beginning=0, scheduled=0, combo=0,best=0,hits=0,offset=0,lastInput=-1,jump=-10,flash='', feedbackUntil=0,feedbackStarted=-10;
+let running=false, muted=false, beginning=0, scheduled=0, combo=0,best=0,hits=0,perfectHits=0,goodHits=0,offset=0,lastInput=-1,jump=-10,flash='', feedbackUntil=0,feedbackStarted=-10;
 let successful=new Set<number>(), extras=new Set<number>(), landing=-10, secondJump=-10;
 let ripples:Ripple[]=[];let shardsTaken=new Set<number>(),shardBursts:ShardBurst[]=[];
 let guests:Guest[]=[],guestOrdinal=0,guestLast=-10,guestLastKind=-1;let crowd=0,crowdAt=0,dancerChain=0,dancerLast=-2;
@@ -144,8 +145,9 @@ function silence(){
  for(let i=0;i<gains.length;i++){gains[i].gain.cancelScheduledValues(audio.currentTime);gains[i].gain.setValueAtTime(0,audio.currentTime);voices[i].frequency.cancelScheduledValues(audio.currentTime)}
  noiseGain.gain.cancelScheduledValues(audio.currentTime);noiseGain.gain.setValueAtTime(0,audio.currentTime);noiseFilter.frequency.cancelScheduledValues(audio.currentTime);
 }
-async function begin(){if(running&&!resultShown)return;if(running)finish();resultShown=false;endedAt=0;start.disabled=true;try{if(!audio)initAudio();await audio.resume();master.gain.setValueAtTime(muted?0:.55,audio.currentTime);silence();judged.clear();successful.clear();extras.clear();ripples=[];shardsTaken.clear();shardBursts=[];guests=[];guestOrdinal=0;guestLast=-10;guestLastKind=-1;dancerChain=0;dancerLast=-2;crowd=0;crowdAt=audio.currentTime;practiceBeats.clear();practiceJump=practiceLanding=lastPractice=practiceFeedback=-10;secondJump=landing=-10;harmonyLevels.clear();lastHarmonyLevel=0;combo=best=hits=scheduled=0;lastInput=-1;jump=feedbackStarted=-10;feedbackUntil=0;beginning=audio.currentTime+.05;learning=true;running=true;panel.hidden=true;start.blur();updateStats();timer=window.setInterval(schedule,25);schedule()}catch{message.textContent='音の起動に失敗しました。もう一度お試しください。'}finally{start.disabled=false}}
-function showResult(interrupted=false){resultShown=true;panel.hidden=false;$('h1').textContent=interrupted?'ひと休み。もう一度？':hits>=225?'世界が、色づいた！':'もう一歩、拍に乗ろう。';message.textContent=interrupted?'画面を離れたため停止しました。':`${hits} / 300 HIT · BEST COMBO ${best}`;start.textContent='もう一度あそぶ'}
+async function begin(){if(running&&!resultShown)return;if(running)finish();resultShown=false;endedAt=0;start.disabled=true;try{if(!audio)initAudio();await audio.resume();master.gain.setValueAtTime(muted?0:.55,audio.currentTime);silence();judged.clear();successful.clear();extras.clear();ripples=[];shardsTaken.clear();shardBursts=[];guests=[];guestOrdinal=0;guestLast=-10;guestLastKind=-1;dancerChain=0;dancerLast=-2;crowd=0;crowdAt=audio.currentTime;practiceBeats.clear();practiceJump=practiceLanding=lastPractice=practiceFeedback=-10;secondJump=landing=-10;harmonyLevels.clear();lastHarmonyLevel=0;combo=best=hits=perfectHits=goodHits=scheduled=0;lastInput=-1;jump=feedbackStarted=-10;feedbackUntil=0;beginning=audio.currentTime+.05;learning=true;running=true;panel.hidden=true;$('main').dataset.result='false';panel.dataset.perfect='false';panel.dataset.result='false';$('#precision').hidden=true;start.blur();updateStats();timer=window.setInterval(schedule,25);schedule()}catch{message.textContent='音の起動に失敗しました。もう一度お試しください。'}finally{start.disabled=false}}
+function allPerfect(){return !learning&&(running?audio.currentTime-beginning:endedAt)>=finale&&perfectHits===300&&goodHits===0&&hits===300&&judged.size===300}
+function showResult(interrupted=false){const perfect=!interrupted&&allPerfect();resultShown=true;panel.hidden=false;$('main').dataset.result='true';panel.dataset.perfect=String(perfect);panel.dataset.result='true';$('h1').textContent=interrupted?'ひと休み。もう一度？':perfect?'ALL PERFECT!':hits>=225?'世界が、色づいた！':'もう一歩、拍に乗ろう。';message.textContent=interrupted?'画面を離れたため停止しました。':`${hits} / 300 HIT · BEST COMBO ${best}`;$('#precision').hidden=false;$('#perfect-count').textContent=String(perfectHits);$('#good-count').textContent=String(goodHits);$('#miss-count').textContent=String(Math.max(0,judged.size-hits));start.textContent='もう一度あそぶ'}
 function finish(interrupted=false){endedAt=Math.min(journeyDuration,Math.max(0,audio.currentTime-beginning));learning=false;ripples=[];shardsTaken.clear();shardBursts=[];guests=[];crowd=0;dancerChain=0;dancerLast=-2;running=false;clearInterval(timer);silence();showResult(interrupted)}
 function leadMidi(n:number){
  const b=journey[n],k=b.local;
@@ -189,7 +191,7 @@ function tap(){
  // Main targets win before practice/debounce, including early inputs at every boundary.
  if(error<=windowFor(nearest)){
   if(judged.has(n))return;lastInput=now;judged.add(n);successful.add(n);hits++;combo++;best=Math.max(best,combo);jump=now;secondJump=-10;
-  landing=beginning+nearest.at+nearest.span+offset;flash=error<nearest.span*.13?'PERFECT':'GOOD';feedbackStarted=now;feedbackUntil=now+.30;
+  landing=beginning+nearest.at+nearest.span+offset;flash=error<nearest.span*.13?'PERFECT':'GOOD';if(flash==='PERFECT')perfectHits++;else goodHits++;feedbackStarted=now;feedbackUntil=now+.30;
   articulate(chordToneNear(leadMidi(journey.indexOf(nearest))+12,n),now);updateStats();return;
  }
  const current=position(song).beat;
@@ -257,7 +259,7 @@ function draw(){
  if(!learning&&beat.kind!=='intro'&&beat.kind!=='outro')drawCrowd(g,w,h,crowd,frame.phase,progress,accent,gentle);
  if(beat.kind==='bridge')drawCheer(g,w,h,frame.phase,beat.local,accent,gentle);
  if(beat.kind!=='outro')drawGuests(g,w,h,now,guests,frame.phase,gentle);
- fireworks(g,w,h,now-beginning-finale,gentle);
+ fireworks(g,w,h,song-finale,gentle,allPerfect());if(allPerfect())drawPerfectFinale(g,w,h,(song-finale)/(60/168),gentle);
  ripples=ripples.filter(wave=>now-wave.time<wave.life);
  drawRipples(g,w,h,now,ripples,gentle);
  const finishTime=now-beginning-finale,finishBeat=finishTime/(60/168),finishing=beat.kind==='outro';
@@ -293,18 +295,19 @@ function draw(){
  const celebrate=finishing&&finishBeat>=4||!finishing&&airborne&&move.arms===2;
  drawBuddy(g,accent,style.bg,stage===0,celebrate,flight*4+extra*8+(airborne?move.arms*5:0),airborne&&!finishing?move.feet:0,stage>=1);
  if(stage>=7&&!hasShard(beat)){g.fillStyle=accent;g.fillRect(-9,-42,3,3);g.fillRect(0,-45,3,3);g.fillRect(9,-42,3,3)}g.restore();
- g.textAlign='center';g.fillStyle=accent;g.font='bold 16px monospace';
+ if(running&&!learning)drawStageEntry(g,w,beat.kind,beat.local,frame.phase,levels[beat.stage].name);
+ g.textAlign='center';g.fillStyle=accent;g.font='bold 16px PulsePixel, monospace';
  if(running){
   if(learning||beat.kind==='intro'){
    const counting=!learning&&now>=beginning&&t>=-4*BEAT;
-   g.font=counting?'bold 36px monospace':'bold 16px monospace';
+   g.font=counting?'bold 36px PulsePixel, monospace':'bold 16px PulsePixel, monospace';
    g.fillText(counting?String(Math.max(1,Math.ceil(-t/BEAT))):'TAP',w/2,h*.32);
-   if(now<practiceFeedback){g.font='bold 14px monospace';g.fillText(practiceFlash,w/2,h*.32+42)}
+   if(now<practiceFeedback){g.font='bold 14px PulsePixel, monospace';g.fillText(practiceFlash,w/2,h*.32+42)}
    $('#hint').textContent=counting?(t>=-BEAT?'次の拍から本番!':'そのまま 4 → 3 → 2 → 1'):learning?'タップでジャンプ!':'拍に合わせてタップ · 練習';
   }
   else{
    $('#hint').textContent=finishing?'FINALE · 走破!':beat.kind==='bridge'?`${levels[beat.stage].name} → ${Math.round(60/beat.span)} BPM`:`${beat.stage+1} / 5 · ${levels[beat.stage].name} · ${levels[beat.stage].bpm} BPM`;
-   if(now<feedbackUntil)drawFeedback(g,w,h,flash,now-feedbackStarted,accent,Math.min(7,stage+beat.stage),gentle);else if(t<.35){g.font='bold 28px monospace';g.fillText('TAP!',w/2,h*.32)}
+   if(now<feedbackUntil)drawFeedback(g,w,h,flash,now-feedbackStarted,accent,Math.min(7,stage+beat.stage),gentle);else if(t<.35){g.font='bold 28px PulsePixel, monospace';g.fillText('TAP!',w/2,h*.32)}
    for(const b of targets){if(song>b.at+windowFor(b)+offset&&!judged.has(b.hit)){judged.add(b.hit);if(combo>0)breakCombo();updateStats()}}
    if(song>=finale+8*(60/168)&&!resultShown)showResult();if(resultShown)$('#hint').textContent='FINALE · 旅の終わり';if(song>=journeyDuration)finish();
   }

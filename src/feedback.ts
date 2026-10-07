@@ -4,7 +4,7 @@ export function drawFeedback(g:CanvasRenderingContext2D,w:number,h:number,label:
  const scale=reduced?1:age<.08?1+(perfect?.18:good?.09:.06)*Math.sin(age/.08*Math.PI):1-.035*p;
  g.translate(w*.5,h*.32-(reduced?0:Math.sin(p*Math.PI)*(perfect?5:2)));g.scale(scale,scale);
  g.globalAlpha=Math.min(1,(1-p)*4);g.textAlign='center';g.textBaseline='alphabetic';g.fillStyle=color;
- g.font=`bold ${perfect?24+power*.65:good?22:17}px monospace`;
+ g.font=`bold ${perfect?24+power*.65:good?22:17}px PulsePixel, monospace`;
  if(perfect&&!reduced){g.shadowColor=color;g.shadowBlur=5+power;g.strokeStyle=color+'30';g.lineWidth=3;g.strokeText(label,0,0)}
  g.fillText(label,0,0);g.shadowBlur=0;
  if(perfect){g.strokeStyle=color;g.lineWidth=2;g.beginPath();g.moveTo(-35,10);g.lineTo(35,10);g.stroke();
