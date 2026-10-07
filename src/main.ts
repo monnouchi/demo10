@@ -3,6 +3,8 @@ import {journey,targets,levels,duration as journeyDuration,finale,position,pitch
 import {drawField,platform,fireworks} from './field';
 import {drawRipples,type Ripple} from './ripple';
 import {drawFeedback,drawHopTrail} from './feedback';
+import {drawShowcase,trick} from './showcase';
+import {drawGuests,drawCheer,type Guest} from './guests';
 const $ = <T extends HTMLElement>(s:string)=>document.querySelector<T>(s)!;
 const canvas=$<HTMLCanvasElement>('canvas'), g=canvas.getContext('2d')!;
 const panel=$('#panel'), start=$<HTMLButtonElement>('#start'), message=$('#message');
@@ -13,6 +15,7 @@ let resultShown=false,learning=false,endedAt=0;
 let running=false, muted=false, beginning=0, scheduled=0, combo=0,best=0,hits=0,offset=0,lastInput=-1,jump=-10,flash='', feedbackUntil=0,feedbackStarted=-10;
 let successful=new Set<number>(), extras=new Set<number>(), landing=-10, secondJump=-10;
 let ripples:Ripple[]=[];
+let guests:Guest[]=[],guestOrdinal=0,guestLast=-10;
 let practiceJump=-10,practiceLanding=-10,lastPractice=-10,practiceFeedback=-10,practiceFlash='';
 let practiceBeats=new Set<number>(),drumCues:{start:number,end:number}[]=[];
 const reducedMotion=matchMedia('(prefers-reduced-motion: reduce)');
@@ -133,9 +136,9 @@ function silence(){
  for(let i=0;i<gains.length;i++){gains[i].gain.cancelScheduledValues(audio.currentTime);gains[i].gain.setValueAtTime(0,audio.currentTime);voices[i].frequency.cancelScheduledValues(audio.currentTime)}
  noiseGain.gain.cancelScheduledValues(audio.currentTime);noiseGain.gain.setValueAtTime(0,audio.currentTime);noiseFilter.frequency.cancelScheduledValues(audio.currentTime);
 }
-async function begin(){if(running&&!resultShown)return;if(running)finish();resultShown=false;endedAt=0;start.disabled=true;try{if(!audio)initAudio();await audio.resume();master.gain.setValueAtTime(muted?0:.55,audio.currentTime);silence();judged.clear();successful.clear();extras.clear();ripples=[];practiceBeats.clear();practiceJump=practiceLanding=lastPractice=practiceFeedback=-10;secondJump=landing=-10;harmonyLevels.clear();lastHarmonyLevel=0;combo=best=hits=scheduled=0;lastInput=-1;jump=feedbackStarted=-10;feedbackUntil=0;beginning=audio.currentTime+.05;learning=true;running=true;panel.hidden=true;start.blur();updateStats();timer=window.setInterval(schedule,25);schedule()}catch{message.textContent='音の起動に失敗しました。もう一度お試しください。'}finally{start.disabled=false}}
+async function begin(){if(running&&!resultShown)return;if(running)finish();resultShown=false;endedAt=0;start.disabled=true;try{if(!audio)initAudio();await audio.resume();master.gain.setValueAtTime(muted?0:.55,audio.currentTime);silence();judged.clear();successful.clear();extras.clear();ripples=[];guests=[];guestOrdinal=0;guestLast=-10;practiceBeats.clear();practiceJump=practiceLanding=lastPractice=practiceFeedback=-10;secondJump=landing=-10;harmonyLevels.clear();lastHarmonyLevel=0;combo=best=hits=scheduled=0;lastInput=-1;jump=feedbackStarted=-10;feedbackUntil=0;beginning=audio.currentTime+.05;learning=true;running=true;panel.hidden=true;start.blur();updateStats();timer=window.setInterval(schedule,25);schedule()}catch{message.textContent='音の起動に失敗しました。もう一度お試しください。'}finally{start.disabled=false}}
 function showResult(interrupted=false){resultShown=true;panel.hidden=false;$('h1').textContent=interrupted?'ひと休み。もう一度？':hits>=225?'世界が、色づいた！':'もう一歩、拍に乗ろう。';message.textContent=interrupted?'画面を離れたため停止しました。':`${hits} / 300 HIT · BEST COMBO ${best}`;start.textContent='もう一度あそぶ'}
-function finish(interrupted=false){endedAt=Math.min(journeyDuration,Math.max(0,audio.currentTime-beginning));learning=false;ripples=[];running=false;clearInterval(timer);silence();showResult(interrupted)}
+function finish(interrupted=false){endedAt=Math.min(journeyDuration,Math.max(0,audio.currentTime-beginning));learning=false;ripples=[];guests=[];running=false;clearInterval(timer);silence();showResult(interrupted)}
 function leadMidi(n:number){
  const b=journey[n],k=b.local;
  if(b.kind==='intro')return 72;
@@ -158,6 +161,14 @@ function ripple(now:number){
  const y=h*.64-6*WORLD_SCALE-Math.sin(p*Math.PI)*(reducedMotion.matches?24:64)*WORLD_SCALE-16*scale;
  ripples.push({time:now,x:.28,y:y/h,stage,field,color:stages[stage].color,life:reducedMotion.matches?.45:1.15+Math.min(7,stage+field)*.025});
  ripples=ripples.slice(-3);
+}
+function inviteGuest(now:number,field:number){
+ guests=guests.filter(v=>now-v.time<v.life);
+ if(now-guestLast<.9||guests.length>=2)return;
+ let kind=(field+guestOrdinal)%3;for(let i=0;i<3&&guests.some(v=>v.kind===kind);i++)kind=(kind+1)%3;
+ if(guests.some(v=>v.kind===kind))return;
+ const colors=['#8bdfff','#e1a5ff','#91ffe1'];
+ guests.push({kind,time:now,life:kind===0?1.35:kind===1?3.6:4,field,color:colors[kind]});guestOrdinal++;guestLast=now;
 }
 function tap(){
  if(!running||resultShown)return;const now=audio.currentTime;
@@ -183,7 +194,7 @@ function tap(){
  if(current.kind!=='main')return;
  const prior=current.hit,offError=Math.abs(song-current.at-current.span*.5);
  if(current.local<59&&offError<=offWindow(current)){
-  if(successful.has(prior)&&!extras.has(prior)&&now<landing-.02){extras.add(prior);lastInput=now;secondJump=now;ripple(now);flash='DOUBLE HOP';feedbackStarted=now;feedbackUntil=now+.22;articulate(chordToneNear(leadMidi(journey.indexOf(current))+19,prior),now)}return;
+  if(successful.has(prior)&&!extras.has(prior)&&now<landing-.02){extras.add(prior);lastInput=now;secondJump=now;ripple(now);inviteGuest(now,current.stage);flash='DOUBLE HOP';feedbackStarted=now;feedbackUntil=now+.22;articulate(chordToneNear(leadMidi(journey.indexOf(current))+19,prior),now)}return;
  }
  if(now-lastInput<.08)return;lastInput=now;
  if(!judged.has(n)&&song>=targets[0].at&&song<finale){breakCombo();flash='拍を待とう';feedbackStarted=now;feedbackUntil=now+.25;updateStats()}
@@ -225,6 +236,13 @@ function draw(){
  const mix=beat.kind==='bridge'?(beat.local+frame.phase)/4:1;
  if(beat.kind==='bridge'){g.save();g.globalAlpha=1-mix;drawField(g,w,h,beat.stage-1,stage,accent,song,gentle,1-mix);g.restore()}
  g.save();g.globalAlpha=mix;drawField(g,w,h,beat.stage,stage,accent,song,gentle,mix);g.restore();
+ if(!learning&&beat.kind!=='intro'&&beat.kind!=='outro'){
+  if(beat.kind==='bridge')drawShowcase(g,w,h,beat.stage-1,stage,accent,frame.phase,beat.local,gentle,1-mix);
+  drawShowcase(g,w,h,beat.stage,stage,accent,frame.phase,beat.local,gentle,mix);
+ }
+ guests=guests.filter(v=>now-v.time<v.life);
+ if(beat.kind==='bridge')drawCheer(g,w,h,frame.phase,beat.local,accent,gentle);
+ if(beat.kind!=='outro')drawGuests(g,w,h,now,guests,frame.phase,gentle);
  fireworks(g,w,h,now-beginning-finale,gentle);
  ripples=ripples.filter(wave=>now-wave.time<wave.life);
  drawRipples(g,w,h,now,ripples,gentle);
@@ -245,10 +263,10 @@ function draw(){
  const extra=now>=secondJump&&now<landing&&secondJump>jump?Math.sin((now-secondJump)/(landing-secondJump)*Math.PI):0;
  const victory=finishing&&finishBeat>=4&&finishBeat<6?Math.sin((finishBeat-4)/2*Math.PI):0;
  const jumpHeight=(finishing?(gentle?victory*18:victory*84):(gentle?flight*24+extra*10:flight*64+extra*34))*WORLD_SCALE;
- const variant=Math.floor(hits/4)%3;
+ const move=trick(beat.stage,beat.local,p,extra,stage,gentle);
  g.save();g.translate(x,y-6*WORLD_SCALE-jumpHeight);
  const characterScale=Math.min(1,w/390,h/664)*WORLD_SCALE;g.scale(characterScale,characterScale);
- if(!gentle&&airborne&&!finishing){if(stage>=5&&variant===2)g.rotate(Math.sin(p*Math.PI)*.55);else if(stage>=4&&variant===1)g.rotate(p*Math.PI*2);else if(stage>=2)g.rotate(Math.sin(p*Math.PI)*.18*(variant===0?1:-1));if(extra)g.rotate(extra*(.10+beat.stage*.08+stage*.025))}
+ if(airborne&&!finishing){g.rotate(move.angle);g.transform(1,0,move.lean,1,0,0)}
  const squash=gentle?0:airborne?Math.sin(p*Math.PI)*.10:(now>=landing&&now-landing<.12?-.15*Math.sin((now-landing)/.12*Math.PI):0);
  g.scale(1-Math.max(-.15,Math.min(.10,squash)),1+Math.max(-.15,Math.min(.10,squash)));
  g.fillStyle=accent;
@@ -257,9 +275,9 @@ function draw(){
  if(stage===0){g.fillRect(-12,-32,24,4);g.fillRect(-16,-28,32,24);g.fillRect(-12,-4,24,4);g.fillRect(-8,-37,8,6)}
  else{g.beginPath();g.roundRect(-16,-32,32,32,11);g.fill();g.beginPath();g.ellipse(-5,-34,4,6,-.4,0,Math.PI*2);g.fill()}
  g.shadowBlur=0;
- const celebrate=finishing&&finishBeat>=4||!finishing&&extra>.05&&beat.stage>=2;
- if(celebrate){g.save();g.translate(-17,-22);g.rotate(-.7);g.fillRect(-3,-13,5,16);g.restore();g.save();g.translate(17,-22);g.rotate(.7);g.fillRect(-2,-13,5,16);g.restore()}else{g.fillRect(-20,-16-flight*4-extra*8,5,9);g.fillRect(15,-16-flight*4-extra*8,5,9)}
- g.fillRect(-11,0,7,6);g.fillRect(4,0,7,6);
+ const celebrate=finishing&&finishBeat>=4||!finishing&&airborne&&move.arms===2;
+ if(celebrate){g.save();g.translate(-17,-22);g.rotate(-.7);g.fillRect(-3,-13,5,16);g.restore();g.save();g.translate(17,-22);g.rotate(.7);g.fillRect(-2,-13,5,16);g.restore()}else{g.fillRect(-20,-16-flight*4-extra*8-(airborne?move.arms*5:0),5,9);g.fillRect(15,-16-flight*4-extra*8-(airborne?move.arms*5:0),5,9)}
+ g.fillRect(-11,airborne&&!finishing?move.feet:0,7,6);g.fillRect(4,airborne&&!finishing?-move.feet:0,7,6);
  g.fillStyle=style.bg;g.fillRect(-7,-22,4,5);g.fillRect(4,-22,4,5);
  g.beginPath();g.arc(0,-13,3,0,Math.PI);g.strokeStyle=style.bg;g.lineWidth=1.5;g.stroke();
  if(stage>=1){g.fillStyle='#ff9aaf99';g.fillRect(-12,-15,4,3);g.fillRect(8,-15,4,3)}
