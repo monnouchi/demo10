@@ -7,10 +7,12 @@ const panel=$('#panel'), start=$<HTMLButtonElement>('#start'), message=$('#messa
 const WORLD_SCALE=.85;
 const BEAT=.5, INTRO_BEATS=8, OUTRO_BEATS=4, TOTAL=60, WINDOW=.14;
 let audio:AudioContext, master:GainNode, voices:OscillatorNode[]=[], gains:GainNode[]=[], noise:AudioBufferSourceNode, noiseGain:GainNode, noiseFilter:BiquadFilterNode;
-let resultShown=false;
+let resultShown=false,learning=false;
 let running=false, muted=false, beginning=0, scheduled=0, combo=0,best=0,hits=0,offset=0,lastInput=-1,jump=-10,flash='', feedbackUntil=0;
 let successful=new Set<number>(), extras=new Set<number>(), landing=-10, secondJump=-10;
 let ripples:Ripple[]=[];
+let practiceJump=-10,practiceLanding=-10,lastPractice=-10,practiceFeedback=-10,practiceFlash='';
+let practiceBeats=new Set<number>(),drumCues:{start:number,end:number}[]=[];
 const reducedMotion=matchMedia('(prefers-reduced-motion: reduce)');
 let judged=new Set<number>(), timer:number, w=390,h=800;
 const melody=[72,76,79,76,74,76,81,79,72,76,79,84,81,79,76,74];
@@ -86,11 +88,12 @@ function leadSettings(n:number){
 }
 function playLead(n:number,t:number){const v=leadSettings(n);note(0,leadMidi(n),t,v.duration,v.level)}
 function drum(t:number,tone:number,duration:number,level:number){
+ drumCues=drumCues.filter(c=>c.end>audio.currentTime-.1);drumCues.push({start:t,end:t+duration});
  noiseFilter.frequency.setValueAtTime(tone,t);noiseGain.gain.setValueAtTime(0,t);
  noiseGain.gain.setValueAtTime(level,t+.002);noiseGain.gain.linearRampToValueAtTime(0,t+duration);
 }
 function schedule(){
- if(!running)return;
+ if(!running||learning)return;
  while(scheduled<INTRO_BEATS+TOTAL+OUTRO_BEATS&&beginning+scheduled*BEAT<audio.currentTime+.12){
   const n=scheduled++,t=beginning+n*BEAT;latchHarmony(n-INTRO_BEATS);playLead(n,t);
   if(n<INTRO_BEATS){
@@ -119,12 +122,13 @@ function schedule(){
  }
 }
 function silence(){
+ drumCues=[];
  for(let i=0;i<gains.length;i++){gains[i].gain.cancelScheduledValues(audio.currentTime);gains[i].gain.setValueAtTime(0,audio.currentTime);voices[i].frequency.cancelScheduledValues(audio.currentTime)}
  noiseGain.gain.cancelScheduledValues(audio.currentTime);noiseGain.gain.setValueAtTime(0,audio.currentTime);noiseFilter.frequency.cancelScheduledValues(audio.currentTime);
 }
-async function begin(){if(running&&!resultShown)return;if(running)finish();resultShown=false;start.disabled=true;try{if(!audio)initAudio();await audio.resume();master.gain.setValueAtTime(muted?0:.55,audio.currentTime);silence();judged.clear();successful.clear();extras.clear();ripples=[];secondJump=landing=-10;harmonyLevels.clear();lastHarmonyLevel=0;combo=best=hits=scheduled=0;lastInput=-1;jump=-10;beginning=audio.currentTime+.05;running=true;panel.hidden=true;start.blur();updateStats();timer=window.setInterval(schedule,25);schedule()}catch{message.textContent='音の起動に失敗しました。もう一度お試しください。'}finally{start.disabled=false}}
+async function begin(){if(running&&!resultShown)return;if(running)finish();resultShown=false;start.disabled=true;try{if(!audio)initAudio();await audio.resume();master.gain.setValueAtTime(muted?0:.55,audio.currentTime);silence();judged.clear();successful.clear();extras.clear();ripples=[];practiceBeats.clear();practiceJump=practiceLanding=lastPractice=practiceFeedback=-10;secondJump=landing=-10;harmonyLevels.clear();lastHarmonyLevel=0;combo=best=hits=scheduled=0;lastInput=-1;jump=-10;beginning=audio.currentTime+.05;learning=true;running=true;panel.hidden=true;start.blur();updateStats();timer=window.setInterval(schedule,25);schedule()}catch{message.textContent='音の起動に失敗しました。もう一度お試しください。'}finally{start.disabled=false}}
 function showResult(interrupted=false){resultShown=true;panel.hidden=false;$('h1').textContent=interrupted?'ひと休み。もう一度？':hits>=45?'世界が、色づいた！':'もう一歩、拍に乗ろう。';message.textContent=interrupted?'画面を離れたため停止しました。':`${hits} / 60 HIT · BEST COMBO ${best}`;start.textContent='もう一度あそぶ'}
-function finish(interrupted=false){ripples=[];running=false;clearInterval(timer);silence();showResult(interrupted)}
+function finish(interrupted=false){learning=false;ripples=[];running=false;clearInterval(timer);silence();showResult(interrupted)}
 function leadMidi(n:number){
  if(n<INTRO_BEATS)return [72,76,79,76,74,76,79,83][n];const k=n-INTRO_BEATS;
  if(k>=TOTAL)return [79,76,74,72][k-TOTAL];
@@ -148,8 +152,20 @@ function ripple(now:number){
  ripples=ripples.slice(-3);
 }
 function tap(){
- if(!running||resultShown)return;const now=audio.currentTime,song=now-beginning-INTRO_BEATS*BEAT-offset;
- if(song < -WINDOW||song>(TOTAL-1)*BEAT+WINDOW)return;
+ if(!running||resultShown)return;const now=audio.currentTime;
+ if(learning){learning=false;beginning=now+.05;practiceJump=lastPractice=now;practiceLanding=now+.40;practiceFlash='JUMP!';practiceFeedback=now+.3;drum(now,3200,.03,.04);schedule();return}
+ const song=now-beginning-INTRO_BEATS*BEAT-offset;
+ if(song < -WINDOW){
+  if(now<beginning-WINDOW||now-lastPractice<.08)return;
+  const intro=now-beginning-offset,beat=Math.round(intro/BEAT),aligned=beat>=0&&beat<INTRO_BEATS&&Math.abs(intro-beat*BEAT)<=WINDOW;
+  if(aligned&&practiceBeats.has(beat))return;if(aligned)practiceBeats.add(beat);
+  lastPractice=practiceJump=now;practiceLanding=beginning+(Math.floor((now-beginning)/BEAT)+1)*BEAT;
+  practiceLanding=Math.max(now+.10,practiceLanding);practiceFlash=aligned?'NICE!':'TAP';practiceFeedback=now+.22;
+  // Keep the single noise voice and all reserved count/fill accents intact.
+  if(!drumCues.some(c=>now<c.end&&now+.04>c.start))drum(now,3200,.03,.04);
+  return;
+ }
+ if(song>(TOTAL-1)*BEAT+WINDOW)return;
  const n=Math.round(song/BEAT),error=Math.abs(song-n*BEAT);
  // Mandatory beats always take priority, including already judged beats.
  if(n>=0&&n<TOTAL&&error<=WINDOW){
@@ -191,7 +207,7 @@ function draw(){
  requestAnimationFrame(draw);
  // Start every frame in CSS coordinates; character transforms cannot accumulate.
  g.setTransform(pixelX,0,0,pixelY,0,0);
- const now=audio?.currentTime??0,t=running?now-beginning-INTRO_BEATS*BEAT:0,progress=Math.max(0,t/BEAT);
+ const now=audio?.currentTime??0,t=running?(learning?-INTRO_BEATS*BEAT:now-beginning-INTRO_BEATS*BEAT):0,progress=Math.max(0,t/BEAT);
  const stage=stages.reduce((v,s,i)=>combo>=s.at?i:v,0),style=stages[stage],accent=style.color;
  const gentle=reducedMotion.matches;
  g.fillStyle=style.bg;g.fillRect(0,0,w,h);
@@ -206,8 +222,8 @@ function draw(){
  const phase=((t%BEAT)+BEAT)%BEAT/BEAT;
  // Beat rings always retain position, contrast and timing in all stages.
  g.strokeStyle=accent;g.lineWidth=3;g.beginPath();g.arc(x,y-70*WORLD_SCALE,(18+(1-phase)*(Math.min(58,w*.15)-18))*WORLD_SCALE,0,Math.PI*2);g.stroke();g.globalAlpha=.4;g.beginPath();g.arc(x,y-70*WORLD_SCALE,18*WORLD_SCALE,0,Math.PI*2);g.stroke();g.globalAlpha=1;
- const introMotion=running&&t<0&&now>=beginning,age=introMotion?((now-beginning)%BEAT):now-jump;
- const duration=introMotion?BEAT:Math.max(.05,landing-jump),p=Math.min(1,Math.max(0,age/duration));
+ const introMotion=running&&t<0&&hits===0,practicing=introMotion&&now<practiceLanding&&now>=practiceJump,age=practicing?now-practiceJump:introMotion?-10:now-jump;
+ const duration=practicing?practiceLanding-practiceJump:introMotion?BEAT:Math.max(.05,landing-jump),p=Math.min(1,Math.max(0,age/duration));
  const airborne=age>=0&&age<duration,flight=airborne?Math.sin(p*Math.PI):0;
  const extra=now>=secondJump&&now<landing&&secondJump>jump?Math.sin((now-secondJump)/(landing-secondJump)*Math.PI):0;
  const jumpHeight=(gentle?flight*24+extra*10:flight*64+extra*34)*WORLD_SCALE;
@@ -232,10 +248,11 @@ function draw(){
  g.textAlign='center';g.fillStyle=accent;g.font='bold 16px monospace';
  if(running){
   if(t<0){
-   const counting=now>=beginning&&t>=-4*BEAT;
+   const counting=!learning&&now>=beginning&&t>=-4*BEAT;
    g.font=counting?'bold 36px monospace':'bold 16px monospace';
-   g.fillText(counting?String(Math.max(1,Math.ceil(-t/BEAT))):'LISTEN',w/2,h*.32);
-   $('#hint').textContent=counting?(t>=-BEAT?'次の拍で TAP!':'4 → 3 → 2 → 1 → TAP'):'INTRO · 拍を聴こう';
+   g.fillText(counting?String(Math.max(1,Math.ceil(-t/BEAT))):'TAP',w/2,h*.32);
+   if(now<practiceFeedback){g.font='bold 14px monospace';g.fillText(practiceFlash,w/2,h*.32+42)}
+   $('#hint').textContent=counting?(t>=-BEAT?'次の拍から本番!':'そのまま 4 → 3 → 2 → 1'):learning?'タップでジャンプ!':'拍に合わせてタップ · 練習';
   }
   else{
    $('#hint').textContent=`${stage+1} / 8 · ${style.name}`;
