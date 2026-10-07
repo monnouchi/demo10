@@ -52,13 +52,21 @@ const basicTriads:readonly (readonly number[])[]=[
 const sevenths=[71,64,60,65,71,60,67,69,64,63,65,65,67,60,65];
 const ninths=[74,67,64,69,74,64,71,72,67,67,60,69,71,64,69];
 let harmonyLevels=new Map<number,number>(),lastHarmonyLevel=0;
-function musicStage(){return combo>=18?3:combo>=8?2:combo>=4?1:0}
-function breakCombo(){
- combo=0;harmonyLevels.clear();lastHarmonyLevel=0;
- const now=audio.currentTime;
- for(let i=0;i<3;i++){const param=gains[i].gain;const value=param.value;param.cancelScheduledValues(now);param.setValueAtTime(value,now);param.linearRampToValueAtTime(0,now+.03);voices[i].frequency.cancelScheduledValues(now)}
+let growthPoints=0,worldFrom=0,worldChanged=-10,lastWorldLoss=-10;
+const layerGains:GainNode[]=[];
+function musicStage(){const stage=worldStage();return stage>=4?3:stage>=2?2:stage>=1?1:0}
+function visualWorld(now:number){const p=Math.max(0,Math.min(1,(now-worldChanged)/.4));return worldFrom+(worldStage()-worldFrom)*p}
+function changeGrowth(points:number){
+ const now=audio.currentTime,prior=worldStage(),from=visualWorld(now);growthPoints=points;if(worldStage()===prior)return;worldFrom=from;worldChanged=now;
+ const stage=worldStage(),strength=.65+.35*stage/7;
+ layerGains.forEach((layer,i)=>{const threshold=i===2?1:i===1?2:4,param=layer.gain;param.cancelScheduledValues(now);param.setValueAtTime(param.value,now);param.linearRampToValueAtTime(stage>=threshold?strength:0,now+.35)});
 }
-function rewardLevel(){return combo>=48?4:combo>=36?3:combo>=18?2:combo>=8?1:0}
+function breakCombo(){
+ combo=0;const stage=worldStage();if(stage>0&&audio.currentTime-lastWorldLoss>=1.2){lastWorldLoss=audio.currentTime;changeGrowth(stages[stage-1].at)}
+ // Existing phrase and note envelopes continue; only layer gain fades.
+ lastHarmonyLevel=rewardLevel();
+}
+function rewardLevel(){return growthPoints>=48?4:growthPoints>=36?3:growthPoints>=18?2:growthPoints>=8?1:0}
 function latchHarmony(k:number){
  if(k>=0&&k<TOTAL&&k%4===0&&!harmonyLevels.has(k/4)){
   lastHarmonyLevel=rewardLevel();harmonyLevels.set(k/4,lastHarmonyLevel);
@@ -89,12 +97,12 @@ function initAudio(){
  const bassWave=audio.createPeriodicWave(new Float32Array(10),bassHarmonics);
  for(let i=0;i<3;i++){const o=audio.createOscillator(),v=audio.createGain();o.type='square';if(i===2)o.setPeriodicWave(bassWave);v.gain.value=0;
   if(i===0){const soft=audio.createBiquadFilter();soft.type='lowpass';soft.frequency.value=2000;soft.Q.value=.5;o.connect(soft).connect(v)}else o.connect(v);
-  v.connect(master);o.start();voices.push(o);gains.push(v)
+  const layer=audio.createGain();layer.gain.value=0;v.connect(layer).connect(master);layerGains.push(layer);o.start();voices.push(o);gains.push(v)
  }
  const b=audio.createBuffer(1,audio.sampleRate,audio.sampleRate),data=b.getChannelData(0);let seed=17;for(let i=0;i<data.length;i++){seed=(seed*16807)%2147483647;data[i]=seed/1073741824-1}
  noise=audio.createBufferSource();noise.buffer=b;noise.loop=true;noiseGain=audio.createGain();noiseGain.gain.value=0;noiseFilter=audio.createBiquadFilter();noiseFilter.type='bandpass';noiseFilter.Q.value=.7;noise.connect(noiseFilter).connect(noiseGain).connect(master);noise.start();
 }
-function note(voice:number,midi:number,t:number,duration:number,level:number){if(musicStage()<(voice===2?1:voice===1?2:3))return;const gain=gains[voice].gain;gain.setValueAtTime(0,t);voices[voice].frequency.setValueAtTime(440*2**((midi-69)/12),t);gain.setValueAtTime(level*(voice===0?.55:voice===1?.85:1),t+.002);gain.linearRampToValueAtTime(0,t+duration)}
+function note(voice:number,midi:number,t:number,duration:number,level:number){const gain=gains[voice].gain;gain.setValueAtTime(0,t);voices[voice].frequency.setValueAtTime(440*2**((midi-69)/12),t);gain.setValueAtTime(level*(voice===0?.55:voice===1?.85:1),t+.002);gain.linearRampToValueAtTime(0,t+duration)}
 function leadSettings(n:number){const b=journey[n];return {duration:b.span*(b.kind==='outro'?.85:b.stage===3?.56:b.stage===1?.28:.40),level:.045+.025*Math.min(7,Math.floor(b.local/8))/7}}
 function playLead(n:number,t:number){const v=leadSettings(n);note(0,leadMidi(n),t,v.duration,v.level)}
 function drum(t:number,tone:number,duration:number,level:number){
@@ -147,7 +155,7 @@ function silence(){
  for(let i=0;i<gains.length;i++){gains[i].gain.cancelScheduledValues(audio.currentTime);gains[i].gain.setValueAtTime(0,audio.currentTime);voices[i].frequency.cancelScheduledValues(audio.currentTime)}
  noiseGain.gain.cancelScheduledValues(audio.currentTime);noiseGain.gain.setValueAtTime(0,audio.currentTime);noiseFilter.frequency.cancelScheduledValues(audio.currentTime);
 }
-async function begin(){if(running&&!resultShown)return;if(running)finish();resultShown=false;endedAt=0;runVersion++;card=null;result=null;sharing=false;share.hidden=true;share.disabled=true;$('#share-status').textContent='';start.disabled=true;try{if(!audio)initAudio();await audio.resume();master.gain.setValueAtTime(muted?0:.55,audio.currentTime);silence();judged.clear();successful.clear();extras.clear();ripples=[];shardsTaken.clear();shardBursts=[];guests=[];guestOrdinal=0;guestLast=-10;guestLastKind=-1;dancerChain=0;dancerLast=-2;crowd=0;crowdAt=audio.currentTime;practiceBeats.clear();practiceJump=practiceLanding=lastPractice=practiceFeedback=-10;secondJump=landing=-10;harmonyLevels.clear();lastHarmonyLevel=0;combo=best=hits=perfectHits=goodHits=scheduled=0;lastInput=-1;jump=feedbackStarted=-10;feedbackUntil=0;beginning=audio.currentTime+.05;learning=true;running=true;panel.hidden=true;$('main').dataset.result='false';panel.dataset.perfect='false';panel.dataset.result='false';$('#precision').hidden=true;start.blur();updateStats();timer=window.setInterval(schedule,25);schedule()}catch{message.textContent='音の起動に失敗しました。もう一度お試しください。'}finally{start.disabled=false}}
+async function begin(){if(running&&!resultShown)return;if(running)finish();resultShown=false;endedAt=0;runVersion++;card=null;result=null;sharing=false;share.hidden=true;share.disabled=true;$('#share-status').textContent='';start.disabled=true;try{if(!audio)initAudio();await audio.resume();master.gain.setValueAtTime(muted?0:.55,audio.currentTime);silence();judged.clear();successful.clear();extras.clear();ripples=[];shardsTaken.clear();shardBursts=[];guests=[];guestOrdinal=0;guestLast=-10;guestLastKind=-1;dancerChain=0;dancerLast=-2;crowd=0;crowdAt=audio.currentTime;practiceBeats.clear();practiceJump=practiceLanding=lastPractice=practiceFeedback=-10;secondJump=landing=-10;harmonyLevels.clear();lastHarmonyLevel=0;combo=best=hits=perfectHits=goodHits=scheduled=0;growthPoints=worldFrom=0;worldChanged=lastWorldLoss=-10;layerGains.forEach(layer=>{layer.gain.cancelScheduledValues(audio.currentTime);layer.gain.setValueAtTime(0,audio.currentTime)});lastInput=-1;jump=feedbackStarted=-10;feedbackUntil=0;beginning=audio.currentTime+.05;learning=true;running=true;panel.hidden=true;$('main').dataset.result='false';panel.dataset.perfect='false';panel.dataset.result='false';$('#precision').hidden=true;start.blur();updateStats();timer=window.setInterval(schedule,25);schedule()}catch{message.textContent='音の起動に失敗しました。もう一度お試しください。'}finally{start.disabled=false}}
 function allPerfect(){return !learning&&(running?audio.currentTime-beginning:endedAt)>=finale&&perfectHits===300&&goodHits===0&&hits===300&&judged.size===300}
 function showResult(interrupted=false){if(resultShown&&!interrupted)return;const completed=(running?audio.currentTime-beginning:endedAt)>=finale&&judged.size===300,stopped=interrupted&&!completed,perfect=completed&&allPerfect();resultShown=true;panel.hidden=false;$('main').dataset.result='true';panel.dataset.perfect=String(perfect);panel.dataset.result='true';$('h1').textContent=stopped?'ひと休み。もう一度？':perfect?'ALL PERFECT!':hits>=225?'世界が、色づいた！':'もう一歩、拍に乗ろう。';message.textContent=stopped?'画面を離れたため停止しました。':`${hits} / 300 HIT · BEST COMBO ${best}`;$('#precision').hidden=false;$('#perfect-count').textContent=String(perfectHits);$('#good-count').textContent=String(goodHits);$('#miss-count').textContent=String(Math.max(0,judged.size-hits));start.textContent='もう一度';result=Object.freeze({hits,perfect:perfectHits,good:goodHits,miss:Math.max(0,judged.size-hits),best,completed,allPerfect:perfect});share.hidden=false;share.disabled=true;share.textContent='画像を準備中';void prepareCard(result,runVersion)}
 async function prepareCard(snapshot:RunResult,version:number){try{const file=await resultCard(snapshot);if(version!==runVersion||!resultShown||result!==snapshot)return;card=file;saveOnly=true;try{saveOnly=!(typeof navigator.share==='function'&&typeof navigator.canShare==='function'&&navigator.canShare({files:[file]}))}catch{}share.textContent=saveOnly?'PNGを保存':'画像を共有';share.disabled=false}catch{if(version===runVersion&&result===snapshot){share.textContent='画像を再作成';share.disabled=false;$('#share-status').textContent='画像を作れませんでした。もう一度お試しください。'}}}
@@ -196,7 +204,7 @@ function tap(){
  const error=Math.abs(song-nearest.at),n=nearest.hit;
  // Main targets win before practice/debounce, including early inputs at every boundary.
  if(error<=windowFor(nearest)){
-  if(judged.has(n))return;lastInput=now;judged.add(n);successful.add(n);hits++;combo++;best=Math.max(best,combo);jump=now;secondJump=-10;
+  if(judged.has(n))return;lastInput=now;judged.add(n);successful.add(n);hits++;combo++;changeGrowth(Math.min(48,growthPoints+1));best=Math.max(best,combo);jump=now;secondJump=-10;
   landing=beginning+nearest.at+nearest.span+offset;flash=error<nearest.span*.13?'PERFECT':'GOOD';if(flash==='PERFECT')perfectHits++;else goodHits++;feedbackStarted=now;feedbackUntil=now+.30;
   articulate(chordToneNear(leadMidi(journey.indexOf(nearest))+12,n),now);updateStats();return;
  }
@@ -241,14 +249,16 @@ const stages=[
  {at:36,name:'AURORA',color:'#91ffe1',bg:'#102c36'},
  {at:48,name:'STARDUST',color:'#fff5b2',bg:'#222640'},
 ];
-function worldStage(){return stages.reduce((v,s,i)=>combo>=s.at?i:v,0)}
+function worldStage(){return stages.reduce((v,s,i)=>growthPoints>=s.at?i:v,0)}
 function draw(){
  requestAnimationFrame(draw);
  // Start every frame in CSS coordinates; character transforms cannot accumulate.
  g.setTransform(pixelX,0,0,pixelY,0,0);
  const now=audio?.currentTime??0,song=running&&!learning?now-beginning:resultShown?endedAt:0,frame=position(song),beat=frame.beat;
  const t=learning?-4:song-4,progress=learning?0:Math.max(0,frame.index-INTRO_BEATS+frame.phase);
- const stage=worldStage(),style=stages[stage],accent=style.color;
+ const stage=worldStage(),visual=visualWorld(now),lo=Math.floor(visual),hi=Math.ceil(visual);
+ const blend=(a:string,b:string)=>{const f=visual-lo;return '#'+[1,3,5].map(i=>Math.round(parseInt(a.slice(i,i+2),16)*(1-f)+parseInt(b.slice(i,i+2),16)*f).toString(16).padStart(2,'0')).join('')};
+ const style={bg:blend(stages[lo].bg,stages[hi].bg)},accent=blend(stages[lo].color,stages[hi].color);
  const gentle=reducedMotion.matches;
  g.fillStyle=style.bg;g.fillRect(0,0,w,h);
  // All scenery remains behind the beat rings and uses the audio clock.
@@ -314,7 +324,7 @@ function draw(){
   else{
    $('#hint').textContent=finishing?'FINALE · 走破!':beat.kind==='bridge'?`${levels[beat.stage].name} → ${Math.round(60/beat.span)} BPM`:`${beat.stage+1} / 5 · ${levels[beat.stage].name} · ${levels[beat.stage].bpm} BPM`;
    if(now<feedbackUntil)drawFeedback(g,w,h,flash,now-feedbackStarted,accent,Math.min(7,stage+beat.stage),gentle);else if(t<.35){g.font='bold 28px PulsePixel, monospace';g.fillText('TAP!',w/2,h*.32)}
-   for(const b of targets){if(song>b.at+windowFor(b)+offset&&!judged.has(b.hit)){judged.add(b.hit);if(combo>0)breakCombo();updateStats()}}
+   for(const b of targets){if(song>b.at+windowFor(b)+offset&&!judged.has(b.hit)){judged.add(b.hit);breakCombo();updateStats()}}
    if(song>=finale+8*(60/168)&&!resultShown)showResult();if(resultShown)$('#hint').textContent='FINALE · 旅の終わり';if(song>=journeyDuration)finish();
   }
  }
