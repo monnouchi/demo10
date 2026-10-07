@@ -1,9 +1,9 @@
 export const levels=[
- {name:'CIRCUIT ROAD',bpm:120,key:0,minor:false,motif:[72,76,79,76,74,76,81,79,72,76,79,84,81,79,76,74],chords:[0,1,2,3,4,5,6,7,8,9,10,11,12,13,14]},
- {name:'DATA TOWERS',bpm:132,key:2,minor:false,motif:[72,76,79,76,81,79,74,79,76,84,81,79,74,79,76,72],chords:[0,6,2,3,1,5,4,3,8,6,2,11,12,1,14]},
- {name:'LIGHT TUNNEL',bpm:144,key:-3,minor:true,motif:[72,76,79,76,71,72,74,79,81,79,76,74,72,71,67,72],chords:[0,2,6,3,0,1,5,3,6,2,9,11,0,13,14]},
- {name:'SIGNAL SEA',bpm:156,key:5,minor:false,motif:[72,76,79,76,81,84,79,76,74,79,81,79,76,74,72,76],chords:[0,4,1,5,6,2,8,3,1,7,5,11,12,13,14]},
- {name:'STAR CORE',bpm:168,key:7,minor:false,motif:[72,76,79,76,84,81,79,84,86,84,81,79,76,79,83,84],chords:[0,3,1,4,6,5,2,11,7,8,10,3,12,13,14]},
+ {name:'Allegretto Road',bpm:120,key:0,minor:false,motif:[72,76,79,76,74,76,81,79,72,76,79,84,81,79,76,74],chords:[0,1,2,3,4,5,6,7,8,9,10,11,12,13,14]},
+ {name:'Allegro Towers',bpm:132,key:2,minor:false,motif:[72,76,79,76,81,79,74,79,76,84,81,79,74,79,76,72],chords:[0,6,2,3,1,5,4,3,8,6,2,11,12,1,14]},
+ {name:'Allegro Tunnel',bpm:144,key:-3,minor:true,motif:[72,76,79,76,71,72,74,79,81,79,76,74,72,71,67,72],chords:[0,2,6,3,0,1,5,3,6,2,9,11,0,13,14]},
+ {name:'Vivace Sea',bpm:156,key:5,minor:false,motif:[72,76,79,76,81,84,79,76,74,79,81,79,76,74,72,76],chords:[0,4,1,5,6,2,8,3,1,7,5,11,12,13,14]},
+ {name:'Presto Core',bpm:168,key:7,minor:false,motif:[72,76,79,76,84,81,79,84,86,84,81,79,76,79,83,84],chords:[0,3,1,4,6,5,2,11,7,8,10,3,12,13,14]},
 ] as const;
 export type Beat={at:number,span:number,stage:number,local:number,hit:number,kind:'intro'|'main'|'bridge'|'outro'};
 export const journey:Beat[]=[];
