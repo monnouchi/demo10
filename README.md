@@ -64,7 +64,7 @@ Node.js 20.19以上（または22.12以上）。`npm ci` → `npm run dev`。`np
 
 ## GitHub Pages
 
-公開先：<https://monnouchi.github.io/demo10/>。公開元はGitHub Actions。`main` のpush後に[公開ワークフロー](.github/workflows/pages.yml)がビルドして `dist/` を配信します。PRはビルドのみ、手動実行も可能。`dist/` はcommitしません。詳しくは[公開手順](docs/deployment.md)。
+公開先：<https://monnouchi.github.io/pulse-hop/>。公開元はGitHub Actions。`main` のpush後に[公開ワークフロー](.github/workflows/pages.yml)がビルドして `dist/` を配信します。PRはビルドのみ、手動実行も可能。`dist/` はcommitしません。詳しくは[公開手順](docs/deployment.md)。
 
 検証ではChrome純正PCMとブラウザ操作を使います。実行環境の通常スピーカー出力で独立音声テストの時計も停止する場合は、出力先なしのChrome音声時計で確認し、実聴とは区別します。iPhone実機の音・遅延は未確認です。
 
@@ -73,3 +73,7 @@ Node.js 20.19以上（または22.12以上）。`npm ci` → `npm run dev`。`np
 タイトルの透過ロゴは本作向けに画像生成し、WebPへ最適化したローカルassetです。日本語の案内とボタンは端末の字体、名前・判定・数値は専用ピクセル字体で統一しています。
 
 面の間の4拍は切れ目のない道を走る採点なしの区間です。終点の旗と次の離れた足場、次のステージ名、既存の加速フィルが切り替わりを示します。つなぎのタップでジャンプは強制しません。ミスでは約0.18秒だけ姿勢を崩し、成功入力で即立て直します（入力制限・追加罰なし）。
+
+## ライセンス
+
+[MIT License](LICENSE)。本作のコード・楽曲・キャラクター・オリジナルピクセルフォント・本作向けに生成したロゴとOGP画像を含みます。依存パッケージには各提供元のライセンスが適用されます（TypeScript: Apache-2.0、Vite: MIT等）。依存パッケージの著作権表示・ライセンスをこのMIT表記で置き換えません。

@@ -6,7 +6,7 @@
 
 ## 更新
 
-`npm ci`、`npm run build` で確認し、ソースを `main` に通常pushします。GitHub Actionsの「Build and deploy Pages」が成功すると <https://monnouchi.github.io/demo10/> が更新されます。`npm run preview` でローカルのビルド結果を確認できます。
+`npm ci`、`npm run build` で確認し、ソースを `main` に通常pushします。GitHub Actionsの「Build and deploy Pages」が成功すると <https://monnouchi.github.io/pulse-hop/> が更新されます。`npm run preview` でローカルのビルド結果を確認できます。
 
 Pagesの公開元はSettings → Pages → Source → **GitHub Actions**。所有者が設定済みです。ワークフローはPages設定を書き換えません。
 
