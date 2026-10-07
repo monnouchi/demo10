@@ -80,11 +80,17 @@ function harmonyAt(k:number):Harmony{
 function chordToneNear(target:number,k:number){return toneNear(target,harmonyAt(k).tones)}
 function initAudio(){
  audio=new AudioContext(); master=audio.createGain();master.gain.value=.55;master.connect(audio.destination);
- for(let i=0;i<3;i++){const o=audio.createOscillator(),v=audio.createGain();o.type=i===2?'triangle':'square';v.gain.value=0;o.connect(v).connect(master);o.start();voices.push(o);gains.push(v)}
+ // The bass wavetable keeps its low fundamental and adds audible chip harmonics.
+ const bassHarmonics=new Float32Array(10);bassHarmonics[1]=1;bassHarmonics[3]=.45;bassHarmonics[5]=.26;bassHarmonics[7]=.15;bassHarmonics[9]=.08;
+ const bassWave=audio.createPeriodicWave(new Float32Array(10),bassHarmonics);
+ for(let i=0;i<3;i++){const o=audio.createOscillator(),v=audio.createGain();o.type='square';if(i===2)o.setPeriodicWave(bassWave);v.gain.value=0;
+  if(i===0){const soft=audio.createBiquadFilter();soft.type='lowpass';soft.frequency.value=2000;soft.Q.value=.5;o.connect(soft).connect(v)}else o.connect(v);
+  v.connect(master);o.start();voices.push(o);gains.push(v)
+ }
  const b=audio.createBuffer(1,audio.sampleRate,audio.sampleRate),data=b.getChannelData(0);let seed=17;for(let i=0;i<data.length;i++){seed=(seed*16807)%2147483647;data[i]=seed/1073741824-1}
  noise=audio.createBufferSource();noise.buffer=b;noise.loop=true;noiseGain=audio.createGain();noiseGain.gain.value=0;noiseFilter=audio.createBiquadFilter();noiseFilter.type='bandpass';noiseFilter.Q.value=.7;noise.connect(noiseFilter).connect(noiseGain).connect(master);noise.start();
 }
-function note(voice:number,midi:number,t:number,duration:number,level:number){if(musicStage()<(voice===2?1:voice===1?2:3))return;const gain=gains[voice].gain;gain.setValueAtTime(0,t);voices[voice].frequency.setValueAtTime(440*2**((midi-69)/12),t);gain.setValueAtTime(level,t+.002);gain.linearRampToValueAtTime(0,t+duration)}
+function note(voice:number,midi:number,t:number,duration:number,level:number){if(musicStage()<(voice===2?1:voice===1?2:3))return;const gain=gains[voice].gain;gain.setValueAtTime(0,t);voices[voice].frequency.setValueAtTime(440*2**((midi-69)/12),t);gain.setValueAtTime(level*(voice===0?.55:voice===1?.85:1),t+.002);gain.linearRampToValueAtTime(0,t+duration)}
 function leadSettings(n:number){const b=journey[n];return {duration:b.span*(b.kind==='outro'?.85:b.stage===3?.56:b.stage===1?.28:.40),level:.045+.025*Math.min(7,Math.floor(b.local/8))/7}}
 function playLead(n:number,t:number){const v=leadSettings(n);note(0,leadMidi(n),t,v.duration,v.level)}
 function drum(t:number,tone:number,duration:number,level:number){
@@ -97,19 +103,19 @@ function schedule(){
  if(!running||learning)return;
  while(scheduled<journey.length&&beginning+journey[scheduled].at<audio.currentTime+.12){
   const n=scheduled++,b=journey[n],t=beginning+b.at,k=b.local,d=b.span,scale=d/.5;
-  if(b.kind==='intro'){drum(t,k===7?2400:k>=4?1800:1200,.10,k>=4?.10:.085);if(k===7){drum(t+d*.5,3400,.055,.065);drum(t+d*.75,4600,.055,.075)}continue}
+  if(b.kind==='intro'){drum(t,k===7?2400:k>=4?1800:1200,.10,k>=4?.15:.14);if(k===7){drum(t+d*.5,3400,.055,.065);drum(t+d*.75,4600,.055,.075)}continue}
   if(b.kind==='bridge'){
    // The old tonic opens into the next dominant on the same three tonal voices.
    const pivot=pivots[b.stage],bass=k===0?pitch(36,b.stage-1):pivot[0]-24;
    note(2,bass,t,d*.7,.14);note(1,k===0?pitch(64,b.stage-1):pivot[k%4],t,d*.65,.035);
    note(0,k===0?pitch(72,b.stage-1):pivot[(k+1)%4]+12,t,d*.45,.055);
-   drum(t,k%2?1800:1200,d*.18,.07);if(k>=2){drum(t+d*.5,3400,d*.12,.04);if(k===3)drum(t+d*.75,4600,d*.10,.06)}
+   drum(t,k%2?1600:1000,d*.20,.14);if(k>=2){drum(t+d*.5,3400,d*.12,.04);if(k===3)drum(t+d*.75,4600,d*.10,.06)}
    continue;
   }
   if(b.kind==='outro'){
    // Four-beat lift, a shared victory hit, then four beats of breathing room.
-   if(k<4){note(0,pitch([79,81,83,86][k],4),t,d*.65,.065);note(1,pitch([59,62,65,67][k],4),t,d*.7,.04);note(2,pitch(43,4),t,d*.6,.15);drum(t,1600+k*300,d*.18,.075);drum(t+d*.5,3200+k*300,d*.12,.04);if(k===3)drum(t+d*.75,4800,d*.10,.06)}
-   else if(k<8){const o=k-4;note(0,pitch([84,79,76,72][o],4),t,d*(o===3?1.8:.7),.07);note(1,pitch([64,67,64,64][o],4),t,d*.9,.04);note(2,pitch(36,4),t,d*.9,.16);drum(t,o===0?1400:2200,d*(o===0?.40:.20),o===0?.12:.065);if(o<3)drum(t+d*.5,6000,d*.15,.035)}
+   if(k<4){note(0,pitch([79,81,83,86][k],4),t,d*.65,.065);note(1,pitch([59,62,65,67][k],4),t,d*.7,.04);note(2,pitch(43,4),t,d*.6,.15);drum(t,1600+k*300,d*.20,.14);drum(t+d*.5,3200+k*300,d*.12,.04);if(k===3)drum(t+d*.75,4800,d*.10,.06)}
+   else if(k<8){const o=k-4;note(0,pitch([84,79,76,72][o],4),t,d*(o===3?1.8:.7),.07);note(1,pitch([64,67,64,64][o],4),t,d*.9,.04);note(2,pitch(36,4),t,d*.9,.16);drum(t,o===0?1400:2200,d*(o===0?.40:.20),o===0?.18:.13);if(o<3)drum(t+d*.5,6000,d*.15,.035)}
    else if(k===8){note(1,pitch(64,4),t,d*2.5,.03);note(2,pitch(36,4),t,d*2.8,.11);drum(t,4000,d*.5,.04)}
    else if(k<=10)drum(t,3600-(k-9)*800,d*.35,k===9?.022:.012);
    continue;
@@ -120,7 +126,7 @@ function schedule(){
   note(1,harmony.inner[k%4],t,d*innerDuration,.028+.012*growth);
   note(2,root,t,k===59?d*.84:d*(b.stage===2?.58:section>=2?.36:.5),.12+.055*growth);
   const snare=b.stage===1?k%4===1||k%4===2:b.stage===2?k%4===3:b.stage===3?k%4===2:k%2===1;
-  drum(t,k===0?1200:snare?1800+growth*700+b.stage*140:320+b.stage*180,k===0?d*.24:d*.17,k===0?.105:.035+.025*growth);
+  drum(t,k===0?1200:snare?1600+growth*300+b.stage*80:800+b.stage*70,k===0?d*.24:d*.20,k===0?.15:.13+.015*growth);
   if(section>=1&&(section>=2||k%2===0)){
    note(2,root+((b.stage===1||b.stage===4||section>=3)&&k%2?12:0),t+d*.5,.085*scale,.085+.045*growth);
    if(!fill)drum(t+d*.5,5500+b.stage*180,.035*scale,.020+.010*growth);
@@ -150,8 +156,8 @@ function leadMidi(n:number){
 }
 function articulate(midi:number,now:number){
  // A single noise articulation keeps early taps playable without tonal layers.
- if(musicStage()<3){drum(now,musicStage()===0?3200:4200,.03,.04);return}
- gains[0].gain.cancelScheduledValues(now);note(0,midi,now,.055,.10);
+ if(musicStage()<3){if(!drumCues.some(c=>now<c.end&&now+.04>c.start))drum(now,musicStage()===0?2200:2800,.035,.055);return}
+ gains[0].gain.cancelScheduledValues(now);note(0,midi,now,.055,.065);
  // Keep any already-reserved following beat after the short articulation.
  for(let n=0;n<scheduled;n++){const t=beginning+journey[n].at;if(t>now+.055)playLead(n,t)}
 }
