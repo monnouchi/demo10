@@ -12,3 +12,4 @@
 #start:disabled{opacity:.65;cursor:wait}
 #mute{min-width:48px;min-height:44px;border-radius:0;box-shadow:2px 2px 0 #10141f}
 @media(max-width:350px){#panel{left:20px;right:20px;padding:24px 12px 22px}#panel h1{font-size:25px}#panel .eyebrow{font-size:8px;letter-spacing:.5px}#start{padding:12px 13px}}
+.combo-group{display:flex;flex-direction:column;align-items:flex-end;gap:6px}#growth{display:flex;align-items:flex-end;gap:7px;letter-spacing:1px;font-size:7px;line-height:10px;color:#b1b6c5}.growth-tiles{display:flex;align-items:flex-end;gap:3px;height:10px}.growth-tiles i{display:block;width:5px;height:8px;background:#83877c;opacity:.27;box-shadow:0 2px 0 #080b1380}.growth-tiles i[data-lit="true"]{opacity:1}.growth-tiles i:nth-child(n+4){height:10px}#growth[data-level="7"]{color:#fff5b2}.stats{align-items:flex-start}
