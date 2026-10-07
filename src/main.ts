@@ -183,7 +183,7 @@ function inviteGuest(now:number,field:number,hit:number){
  dancerChain=hit===dancerLast+1?Math.min(5,dancerChain+1):1;dancerLast=hit;
  const dancers=guests.find(v=>v.kind===2);if(dancers){dancers.wasDancers=dancerCount(dancers,now);dancers.changed=now;dancers.dancers=Math.min(6,1+dancerChain);dancers.time=now;dancers.field=field}
  if(now-guestLast<.9||guests.length>=2)return;
- const pools=[[0,6,3,2,9,1,4],[1,7,6,2,4,0,9],[4,8,1,2,3,9,5],[3,5,0,2,6,9,1],[9,8,1,2,7,5,6]],pool=pools[field];
+ const pools=[[0,6,3,2,9,1,4],[1,7,6,2,4,0,9],[4,8,1,2,0,3,9,5],[3,5,0,2,6,9,1],[9,8,1,2,0,7,5,6]],pool=pools[field];
  let pick=0;while(pick<pool.length&&(pool[(guestOrdinal+pick)%pool.length]===guestLastKind||guests.some(v=>v.kind===pool[(guestOrdinal+pick)%pool.length])))pick++;
  if(pick===pool.length)return;const kind=pool[(guestOrdinal+pick)%pool.length],lives=[1.35,3.6,4,2,2.5,3.8,3.8,2.4,2.2,2.8],colors=['#8bdfff','#e1a5ff','#91ffe1'];
  guests.push({kind,time:now,life:lives[kind],field,color:colors[kind%3],...(kind===2?{dancers:Math.min(6,1+dancerChain),born:now,wasDancers:2,changed:now}:{})});guestOrdinal+=pick+1;guestLast=now;guestLastKind=kind;
