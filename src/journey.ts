@@ -14,7 +14,7 @@ for(let stage=0;stage<5;stage++){
  if(stage>0)for(let i=0;i<4;i++){const bpm=levels[stage-1].bpm+(levels[stage].bpm-levels[stage-1].bpm)*(i+1)/4;add('bridge',stage,i,60/bpm)}
  for(let i=0;i<60;i++)add('main',stage,i,60/levels[stage].bpm,stage*60+i);
 }
-for(let i=0;i<4;i++)add('outro',4,i,60/168);
+for(let i=0;i<12;i++)add('outro',4,i,60/168);
 export const duration=at,targets=journey.filter(b=>b.kind==='main'),finale=journey.find(b=>b.kind==='outro')!.at;
 export function windowFor(b:Beat){return Math.min(.14,b.span*.28)}
 export function offWindow(b:Beat){return Math.min(.075,b.span*.15)}

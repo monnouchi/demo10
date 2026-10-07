@@ -101,7 +101,14 @@ function schedule(){
    drum(t,k%2?1800:1200,d*.18,.07);if(k>=2){drum(t+d*.5,3400,d*.12,.04);if(k===3)drum(t+d*.75,4600,d*.10,.06)}
    continue;
   }
-  if(b.kind==='outro'){playLead(n,t);note(1,pitch([64,67,62,64][k],4),t,d*.85,.04);note(2,pitch(36,4),t,d*.9,.16);drum(t,k===0?1200:1800,d*.2,k===0?.075:.035);continue}
+  if(b.kind==='outro'){
+   // Four-beat lift, a shared victory hit, then four beats of breathing room.
+   if(k<4){note(0,pitch([79,81,83,86][k],4),t,d*.65,.065);note(1,pitch([59,62,65,67][k],4),t,d*.7,.04);note(2,pitch(43,4),t,d*.6,.15);drum(t,1600+k*300,d*.18,.075);drum(t+d*.5,3200+k*300,d*.12,.04);if(k===3)drum(t+d*.75,4800,d*.10,.06)}
+   else if(k<8){const o=k-4;note(0,pitch([84,79,76,72][o],4),t,d*(o===3?1.8:.7),.07);note(1,pitch([64,67,64,64][o],4),t,d*.9,.04);note(2,pitch(36,4),t,d*.9,.16);drum(t,o===0?1400:2200,d*(o===0?.40:.20),o===0?.12:.065);if(o<3)drum(t+d*.5,6000,d*.15,.035)}
+   else if(k===8){note(1,pitch(64,4),t,d*2.5,.03);note(2,pitch(36,4),t,d*2.8,.11);drum(t,4000,d*.5,.04)}
+   else if(k<=10)drum(t,3600-(k-9)*800,d*.35,k===9?.022:.012);
+   continue;
+  }
   latchHarmony(b.hit);playLead(n,t);
   const section=Math.min(7,Math.floor(k/8)),growth=section/7,fill=section>=3&&k%8===7,harmony=harmonyAt(b.hit),root=harmony.bass;
   const innerDuration=b.stage===3?.45:b.stage===1?.28:section>=3?.34:.52;
@@ -131,7 +138,7 @@ function finish(interrupted=false){endedAt=Math.min(journeyDuration,Math.max(0,a
 function leadMidi(n:number){
  const b=journey[n],k=b.local;
  if(b.kind==='intro')return 72;
- if(b.kind==='outro')return pitch([79,76,74,72][k],4);
+ if(b.kind==='outro')return pitch([79,81,83,86,84,79,76,72,72,72,72,72][k],4);
  if(b.kind==='bridge')return k===0?pitch(72,b.stage-1):pivots[b.stage][(k+1)%4]+12;
  const motif=pitch(k>=52?[76,74,72,71,67,69,71,72][(k-52)%8]:levels[b.stage].motif[k%16],b.stage);
  return k%2===0||k===59?chordToneNear(motif,b.hit):motif;
@@ -220,10 +227,13 @@ function draw(){
  fireworks(g,w,h,now-beginning-finale,gentle);
  ripples=ripples.filter(wave=>now-wave.time<wave.life);
  drawRipples(g,w,h,now,ripples,gentle);
- const y=h*.64,spacing=w*.22,x=w*.28;
+ const finishTime=now-beginning-finale,finishBeat=finishTime/(60/168),finishing=beat.kind==='outro';
+ const y=h*(.64+(finishing?.08*Math.min(1,Math.max(0,finishBeat/4)):0)),spacing=w*.22;
+ const x=w*(.28+(finishing?.22*Math.min(1,Math.max(0,finishBeat/4)):0));
  g.strokeStyle=accent+'0b';g.lineWidth=1;for(let i=0;i<14;i++){g.beginPath();g.moveTo(0,y+i*22);g.lineTo(w,y+i*22);g.stroke()}
  if(stage>=6){g.strokeStyle=accent+'12';for(let i=-3;i<5;i++){g.beginPath();g.moveTo(w*.5,y);g.lineTo(w*.5+i*w*.3,h);g.stroke()}}
  for(let i=-2;i<6;i++){const px=x+(i-(progress%1))*spacing;g.fillStyle=i===1?accent:'#515667';platform(g,px,y,WORLD_SCALE,beat.kind==='bridge'&&i<6-8*mix?beat.stage-1:beat.stage,i===1?accent:'#515667',stage)}
+ if(finishing)platform(g,x,y,WORLD_SCALE,4,accent,stage);
  const phase=learning?0:frame.phase;
  // Beat rings always retain position, contrast and timing in all stages.
  g.strokeStyle=accent;g.lineWidth=3;g.beginPath();g.arc(x,y-70*WORLD_SCALE,(18+(1-phase)*(Math.min(58,w*.15)-18))*WORLD_SCALE,0,Math.PI*2);g.stroke();g.globalAlpha=.4;g.beginPath();g.arc(x,y-70*WORLD_SCALE,18*WORLD_SCALE,0,Math.PI*2);g.stroke();g.globalAlpha=1;
@@ -231,11 +241,12 @@ function draw(){
  const duration=practicing?practiceLanding-practiceJump:Math.max(.05,landing-jump),p=Math.min(1,Math.max(0,age/duration));
  const airborne=age>=0&&age<duration,flight=airborne?Math.sin(p*Math.PI):0;
  const extra=now>=secondJump&&now<landing&&secondJump>jump?Math.sin((now-secondJump)/(landing-secondJump)*Math.PI):0;
- const jumpHeight=(gentle?flight*24+extra*10:flight*64+extra*34)*WORLD_SCALE;
+ const victory=finishing&&finishBeat>=4&&finishBeat<6?Math.sin((finishBeat-4)/2*Math.PI):0;
+ const jumpHeight=(finishing?(gentle?victory*18:victory*84):(gentle?flight*24+extra*10:flight*64+extra*34))*WORLD_SCALE;
  const variant=Math.floor(hits/4)%3;
  g.save();g.translate(x,y-6*WORLD_SCALE-jumpHeight);
  const characterScale=Math.min(1,w/390,h/664)*WORLD_SCALE;g.scale(characterScale,characterScale);
- if(!gentle&&airborne){if(stage>=5&&variant===2)g.rotate(Math.sin(p*Math.PI)*.55);else if(stage>=4&&variant===1)g.rotate(p*Math.PI*2);else if(stage>=2)g.rotate(Math.sin(p*Math.PI)*.18*(variant===0?1:-1));if(extra&&stage>=6)g.rotate(extra*.35)}
+ if(!gentle&&airborne&&!finishing){if(stage>=5&&variant===2)g.rotate(Math.sin(p*Math.PI)*.55);else if(stage>=4&&variant===1)g.rotate(p*Math.PI*2);else if(stage>=2)g.rotate(Math.sin(p*Math.PI)*.18*(variant===0?1:-1));if(extra&&stage>=6)g.rotate(extra*.35)}
  const squash=gentle?0:airborne?Math.sin(p*Math.PI)*.10:(now>=landing&&now-landing<.12?-.15*Math.sin((now-landing)/.12*Math.PI):0);
  g.scale(1-Math.max(-.15,Math.min(.10,squash)),1+Math.max(-.15,Math.min(.10,squash)));
  g.fillStyle=accent;
@@ -244,7 +255,8 @@ function draw(){
  if(stage===0){g.fillRect(-12,-32,24,4);g.fillRect(-16,-28,32,24);g.fillRect(-12,-4,24,4);g.fillRect(-8,-37,8,6)}
  else{g.beginPath();g.roundRect(-16,-32,32,32,11);g.fill();g.beginPath();g.ellipse(-5,-34,4,6,-.4,0,Math.PI*2);g.fill()}
  g.shadowBlur=0;
- g.fillRect(-20,-16-flight*4,5,9);g.fillRect(15,-16-flight*4,5,9);
+ const celebrate=finishing&&finishBeat>=4;
+ if(celebrate){g.save();g.translate(-17,-22);g.rotate(-.7);g.fillRect(-3,-13,5,16);g.restore();g.save();g.translate(17,-22);g.rotate(.7);g.fillRect(-2,-13,5,16);g.restore()}else{g.fillRect(-20,-16-flight*4,5,9);g.fillRect(15,-16-flight*4,5,9)}
  g.fillRect(-11,0,7,6);g.fillRect(4,0,7,6);
  g.fillStyle=style.bg;g.fillRect(-7,-22,4,5);g.fillRect(4,-22,4,5);
  g.beginPath();g.arc(0,-13,3,0,Math.PI);g.strokeStyle=style.bg;g.lineWidth=1.5;g.stroke();
@@ -260,10 +272,10 @@ function draw(){
    $('#hint').textContent=counting?(t>=-BEAT?'次の拍から本番!':'そのまま 4 → 3 → 2 → 1'):learning?'タップでジャンプ!':'拍に合わせてタップ · 練習';
   }
   else{
-   $('#hint').textContent=beat.kind==='bridge'?`${levels[beat.stage].name} → ${Math.round(60/beat.span)} BPM`:`${beat.stage+1} / 5 · ${levels[beat.stage].name} · ${levels[beat.stage].bpm} BPM`;
+   $('#hint').textContent=finishing?'FINALE · 走破!':beat.kind==='bridge'?`${levels[beat.stage].name} → ${Math.round(60/beat.span)} BPM`:`${beat.stage+1} / 5 · ${levels[beat.stage].name} · ${levels[beat.stage].bpm} BPM`;
    if(now<feedbackUntil)g.fillText(flash,w/2,h*.32);else if(t<.35){g.font='bold 28px monospace';g.fillText('TAP!',w/2,h*.32)}
    for(const b of targets){if(song>b.at+windowFor(b)+offset&&!judged.has(b.hit)){judged.add(b.hit);if(combo>0)breakCombo();updateStats()}}
-   if(song>=finale+.55&&!resultShown)showResult();if(resultShown)$('#hint').textContent='FINALE · 旅の終わり';if(song>=journeyDuration)finish();
+   if(song>=finale+8*(60/168)&&!resultShown)showResult();if(resultShown)$('#hint').textContent='FINALE · 旅の終わり';if(song>=journeyDuration)finish();
   }
  }
  g.fillStyle='#ffffff20';g.fillRect(24,h-108,w-48,3);g.fillStyle=accent;g.fillRect(24,h-108,(w-48)*Math.min(1,song/journeyDuration),3);
