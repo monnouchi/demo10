@@ -19,19 +19,25 @@ export function drawGuests(g:CanvasRenderingContext2D,w:number,h:number,now:numb
 export function drawCheer(g:CanvasRenderingContext2D,w:number,h:number,phase:number,local:number,color:string,reduced:boolean){
  const progress=(local+phase)/4,fade=Math.min(1,progress*6,(1-progress)*6);
  g.save();g.beginPath();g.rect(0,128,w,Math.max(0,h-256));g.clip();g.fillStyle=g.strokeStyle=color;g.globalAlpha=fade*.65;g.lineWidth=1;
- for(let i=0;i<3;i++){const x=w*(.56+i*.17),y=h*.53,bounce=reduced?0:Math.sin(phase*Math.PI+i*.4)*3;
-  g.save();g.translate(x,y-bounce);g.scale(.55,.55);drawBuddy(g,color,'#151823',false,true,0,0,true);
+ for(let i=0;i<3;i++){const x=w*(.85+i*.22-(local+phase)*.22),y=h*.45,bounce=reduced?0:Math.sin(phase*Math.PI+i*.4)*3;
+  if(x<-24||x>w+24)continue;g.save();g.translate(x,y-bounce);g.scale(.55,.55);drawBuddy(g,color,'#151823',false,true,0,0,true);
   // A headband and a tiny flag distinguish the cheering friends.
   g.fillStyle='#f3f5e9';g.fillRect(-15,-27,30,3);g.fillStyle=g.strokeStyle=color;g.beginPath();g.moveTo(23,-19);g.lineTo(23,-55);g.stroke();g.fillRect(23,-55,22,12);g.fillStyle='#151823';g.fillRect(30,-51,8,3);g.restore();
 
  }
  g.restore();
 }
-// Fixed six positions in the distant side lane; count can fade between levels.
-export function drawCrowd(g:CanvasRenderingContext2D,w:number,h:number,count:number,phase:number,color:string,reduced:boolean){
+// World-anchored side lane: the same .22 screen-width per beat as the platforms.
+export function sideLane(w:number,h:number,count:number,progress:number){
+ const friends:{slot:number,x:number,y:number,opacity:number}[]=[];
+ for(let i=0;i<8;i++){const slot=Math.floor(progress)-2+i,x=w*(.28+(slot-progress)*.22),rank=((slot%6)+6)%6,opacity=Math.max(0,Math.min(1,count-rank));
+  if(x<-16||x>w+16||!opacity)continue;friends.push({slot,x,y:h*(.43+(slot%2? .04:0)),opacity})}
+ return friends.slice(0,6);
+}
+export function drawCrowd(g:CanvasRenderingContext2D,w:number,h:number,count:number,phase:number,progress:number,color:string,reduced:boolean){
  g.save();g.beginPath();g.rect(0,128,w,Math.max(0,h-256));g.clip();
- for(let i=0;i<6;i++){const opacity=Math.max(0,Math.min(1,count-i));if(!opacity)continue;const x=w*(.48+i*.085),y=h*(.49+(i%2)*.045),bounce=reduced?0:Math.sin(phase*Math.PI+i*.5)*2;
-  g.save();g.globalAlpha=opacity*.5;g.translate(x,y-bounce);g.scale(.43,.43);drawBuddy(g,color,'#151823',false,true,0,0,true);g.fillStyle=i%2?'#f3f5e9':color;g.fillRect(-17,-27,34,3);g.restore();
+ for(const friend of sideLane(w,h,count,progress)){const bounce=reduced?0:Math.sin(phase*Math.PI+friend.slot*.5)*2;
+  g.save();g.globalAlpha=friend.opacity*.5;g.translate(friend.x,friend.y-bounce);g.scale(.43,.43);drawBuddy(g,color,'#151823',false,true,0,0,true);g.fillStyle=friend.slot%2?'#f3f5e9':color;g.fillRect(-17,-27,34,3);g.restore();
  }
  g.restore();
 }

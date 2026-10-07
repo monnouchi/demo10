@@ -1,5 +1,6 @@
 import './style.css';
 import {drawBuddy} from './character';
+import {hasShard,shardPosition,drawShards,type ShardBurst} from './shards';
 import {journey,targets,levels,duration as journeyDuration,finale,position,pitch,windowFor,offWindow,} from './journey';
 import {drawField,platform,fireworks} from './field';
 import {drawRipples,type Ripple} from './ripple';
@@ -15,7 +16,7 @@ let audio:AudioContext, master:GainNode, voices:OscillatorNode[]=[], gains:GainN
 let resultShown=false,learning=false,endedAt=0;
 let running=false, muted=false, beginning=0, scheduled=0, combo=0,best=0,hits=0,offset=0,lastInput=-1,jump=-10,flash='', feedbackUntil=0,feedbackStarted=-10;
 let successful=new Set<number>(), extras=new Set<number>(), landing=-10, secondJump=-10;
-let ripples:Ripple[]=[];
+let ripples:Ripple[]=[];let shardsTaken=new Set<number>(),shardBursts:ShardBurst[]=[];
 let guests:Guest[]=[],guestOrdinal=0,guestLast=-10,guestLastKind=-1;let crowd=0,crowdAt=0,dancerChain=0,dancerLast=-2;
 let practiceJump=-10,practiceLanding=-10,lastPractice=-10,practiceFeedback=-10,practiceFlash='';
 let practiceBeats=new Set<number>(),drumCues:{start:number,end:number}[]=[];
@@ -143,9 +144,9 @@ function silence(){
  for(let i=0;i<gains.length;i++){gains[i].gain.cancelScheduledValues(audio.currentTime);gains[i].gain.setValueAtTime(0,audio.currentTime);voices[i].frequency.cancelScheduledValues(audio.currentTime)}
  noiseGain.gain.cancelScheduledValues(audio.currentTime);noiseGain.gain.setValueAtTime(0,audio.currentTime);noiseFilter.frequency.cancelScheduledValues(audio.currentTime);
 }
-async function begin(){if(running&&!resultShown)return;if(running)finish();resultShown=false;endedAt=0;start.disabled=true;try{if(!audio)initAudio();await audio.resume();master.gain.setValueAtTime(muted?0:.55,audio.currentTime);silence();judged.clear();successful.clear();extras.clear();ripples=[];guests=[];guestOrdinal=0;guestLast=-10;guestLastKind=-1;dancerChain=0;dancerLast=-2;crowd=0;crowdAt=audio.currentTime;practiceBeats.clear();practiceJump=practiceLanding=lastPractice=practiceFeedback=-10;secondJump=landing=-10;harmonyLevels.clear();lastHarmonyLevel=0;combo=best=hits=scheduled=0;lastInput=-1;jump=feedbackStarted=-10;feedbackUntil=0;beginning=audio.currentTime+.05;learning=true;running=true;panel.hidden=true;start.blur();updateStats();timer=window.setInterval(schedule,25);schedule()}catch{message.textContent='音の起動に失敗しました。もう一度お試しください。'}finally{start.disabled=false}}
+async function begin(){if(running&&!resultShown)return;if(running)finish();resultShown=false;endedAt=0;start.disabled=true;try{if(!audio)initAudio();await audio.resume();master.gain.setValueAtTime(muted?0:.55,audio.currentTime);silence();judged.clear();successful.clear();extras.clear();ripples=[];shardsTaken.clear();shardBursts=[];guests=[];guestOrdinal=0;guestLast=-10;guestLastKind=-1;dancerChain=0;dancerLast=-2;crowd=0;crowdAt=audio.currentTime;practiceBeats.clear();practiceJump=practiceLanding=lastPractice=practiceFeedback=-10;secondJump=landing=-10;harmonyLevels.clear();lastHarmonyLevel=0;combo=best=hits=scheduled=0;lastInput=-1;jump=feedbackStarted=-10;feedbackUntil=0;beginning=audio.currentTime+.05;learning=true;running=true;panel.hidden=true;start.blur();updateStats();timer=window.setInterval(schedule,25);schedule()}catch{message.textContent='音の起動に失敗しました。もう一度お試しください。'}finally{start.disabled=false}}
 function showResult(interrupted=false){resultShown=true;panel.hidden=false;$('h1').textContent=interrupted?'ひと休み。もう一度？':hits>=225?'世界が、色づいた！':'もう一歩、拍に乗ろう。';message.textContent=interrupted?'画面を離れたため停止しました。':`${hits} / 300 HIT · BEST COMBO ${best}`;start.textContent='もう一度あそぶ'}
-function finish(interrupted=false){endedAt=Math.min(journeyDuration,Math.max(0,audio.currentTime-beginning));learning=false;ripples=[];guests=[];crowd=0;dancerChain=0;dancerLast=-2;running=false;clearInterval(timer);silence();showResult(interrupted)}
+function finish(interrupted=false){endedAt=Math.min(journeyDuration,Math.max(0,audio.currentTime-beginning));learning=false;ripples=[];shardsTaken.clear();shardBursts=[];guests=[];crowd=0;dancerChain=0;dancerLast=-2;running=false;clearInterval(timer);silence();showResult(interrupted)}
 function leadMidi(n:number){
  const b=journey[n],k=b.local;
  if(b.kind==='intro')return 72;
@@ -253,7 +254,7 @@ function draw(){
  guests=guests.filter(v=>now-v.time<v.life);
  const crowdDelta=Math.max(0,Math.min(.1,now-crowdAt));crowdAt=now;const crowdTarget=running&&!learning?Math.min(6,stage):0;
  crowd+=Math.sign(crowdTarget-crowd)*Math.min(Math.abs(crowdTarget-crowd),crowdDelta*(crowdTarget<crowd?1.5:3));
- if(!learning&&beat.kind!=='intro'&&beat.kind!=='outro')drawCrowd(g,w,h,crowd,frame.phase,accent,gentle);
+ if(!learning&&beat.kind!=='intro'&&beat.kind!=='outro')drawCrowd(g,w,h,crowd,frame.phase,progress,accent,gentle);
  if(beat.kind==='bridge')drawCheer(g,w,h,frame.phase,beat.local,accent,gentle);
  if(beat.kind!=='outro')drawGuests(g,w,h,now,guests,frame.phase,gentle);
  fireworks(g,w,h,now-beginning-finale,gentle);
@@ -268,25 +269,30 @@ function draw(){
  if(finishing)platform(g,x,y,WORLD_SCALE,4,accent,stage);
  if(!finishing)drawHopTrail(g,w,h,x,y,now,jump,secondJump,landing,Math.min(1,w/390,h/664)*WORLD_SCALE,Math.min(7,stage+beat.stage),beat.stage,accent,gentle);
  const phase=learning?0:frame.phase;
- // Beat rings always retain position, contrast and timing in all stages.
- g.strokeStyle=accent;g.lineWidth=3;g.beginPath();g.arc(x,y-70*WORLD_SCALE,(18+(1-phase)*(Math.min(58,w*.15)-18))*WORLD_SCALE,0,Math.PI*2);g.stroke();g.globalAlpha=.4;g.beginPath();g.arc(x,y-70*WORLD_SCALE,18*WORLD_SCALE,0,Math.PI*2);g.stroke();g.globalAlpha=1;
  const introMotion=running&&(learning||beat.kind==='intro'||beat.kind==='bridge'),practicing=introMotion&&now<practiceLanding&&now>=practiceJump&&now-jump>now-practiceJump,age=practicing?now-practiceJump:learning?-10:now-jump;
  const duration=practicing?practiceLanding-practiceJump:Math.max(.05,landing-jump),p=Math.min(1,Math.max(0,age/duration));
  const airborne=age>=0&&age<duration,flight=airborne?Math.sin(p*Math.PI):0;
  const extra=now>=secondJump&&now<landing&&secondJump>jump?Math.sin((now-secondJump)/(landing-secondJump)*Math.PI):0;
  const victory=finishing&&finishBeat>=4&&finishBeat<6?Math.sin((finishBeat-4)/2*Math.PI):0;
- const jumpHeight=(finishing?(gentle?victory*18:victory*84):(gentle?flight*24+extra*10:flight*64+extra*34))*WORLD_SCALE;
+ const jumpHeight=(finishing?(gentle?victory*18:victory*84):(gentle?flight*24+extra*(hasShard(beat)?24:10):flight*64+extra*(hasShard(beat)?52:34)))*WORLD_SCALE;
  const move=trick(beat.stage,beat.local,p,extra,stage,gentle);
+ const characterScale=Math.min(1,w/390,h/664)*WORLD_SCALE;
+ if(hasShard(beat)&&extras.has(beat.hit)&&!shardsTaken.has(beat.hit)&&extra>0){const crystal=shardPosition(frame.index-8,progress,w,h,characterScale,WORLD_SCALE,gentle),head=y-6*WORLD_SCALE-jumpHeight-40*characterScale;crystal.x+=(x-5*characterScale-crystal.x)*Math.min(1,extra*3);
+  if(Math.abs(crystal.x-x)<16*characterScale+4&&head<=crystal.y+(gentle?1.5:4)){shardsTaken.add(beat.hit);shardBursts.push({time:now,x:crystal.x,y:crystal.y,color:accent});shardBursts=shardBursts.slice(-3);const wave=ripples.at(-1);if(wave){wave.time=now;wave.x=crystal.x/w;wave.y=crystal.y/h}}
+ }
+ shardBursts=shardBursts.filter(b=>now-b.time<.3);if(!finishing&&!learning)drawShards(g,w,h,progress,characterScale,WORLD_SCALE,gentle,shardsTaken,now,shardBursts,accent,{hit:beat.hit,x:x-5*characterScale,amount:extras.has(beat.hit)?Math.min(1,extra*3):0});
+ // Beat rings always retain position, contrast and timing in all stages.
+ g.strokeStyle=accent;g.lineWidth=3;g.beginPath();g.arc(x,y-70*WORLD_SCALE,(18+(1-phase)*(Math.min(58,w*.15)-18))*WORLD_SCALE,0,Math.PI*2);g.stroke();g.globalAlpha=.4;g.beginPath();g.arc(x,y-70*WORLD_SCALE,18*WORLD_SCALE,0,Math.PI*2);g.stroke();g.globalAlpha=1;
  g.save();g.translate(x,y-6*WORLD_SCALE-jumpHeight);
- const characterScale=Math.min(1,w/390,h/664)*WORLD_SCALE;g.scale(characterScale,characterScale);
- if(airborne&&!finishing){g.rotate(move.angle);g.transform(1,0,move.lean,1,0,0)}
- const squash=gentle?0:airborne?Math.sin(p*Math.PI)*.10:(now>=landing&&now-landing<.12?-.15*Math.sin((now-landing)/.12*Math.PI):0);
+ g.scale(characterScale,characterScale);
+ if(airborne&&!finishing){g.rotate(gentle?0:hasShard(beat)?Math.sin(p*Math.PI)*.05:move.angle);g.transform(1,0,hasShard(beat)?0:move.lean,1,0,0)}
+ const squash=gentle||hasShard(beat)?0:airborne?Math.sin(p*Math.PI)*.10:(now>=landing&&now-landing<.12?-.15*Math.sin((now-landing)/.12*Math.PI):0);
  g.scale(1-Math.max(-.15,Math.min(.10,squash)),1+Math.max(-.15,Math.min(.10,squash)));
  g.fillStyle=accent;
  if(stage>=4&&!gentle){g.shadowColor=accent;g.shadowBlur=stage>=7?20:12}
  const celebrate=finishing&&finishBeat>=4||!finishing&&airborne&&move.arms===2;
  drawBuddy(g,accent,style.bg,stage===0,celebrate,flight*4+extra*8+(airborne?move.arms*5:0),airborne&&!finishing?move.feet:0,stage>=1);
- if(stage>=7){g.fillStyle=accent;g.fillRect(-9,-42,3,3);g.fillRect(0,-45,3,3);g.fillRect(9,-42,3,3)}g.restore();
+ if(stage>=7&&!hasShard(beat)){g.fillStyle=accent;g.fillRect(-9,-42,3,3);g.fillRect(0,-45,3,3);g.fillRect(9,-42,3,3)}g.restore();
  g.textAlign='center';g.fillStyle=accent;g.font='bold 16px monospace';
  if(running){
   if(learning||beat.kind==='intro'){
