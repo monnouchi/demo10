@@ -1,7 +1,7 @@
 :root{--ink:#f3f5e9;--muted:#b1b6c5;--mint:#c1ff66;--panel:#10141f;--edge:#b7c0a9}
 *{box-sizing:border-box}
 body{margin:0;background:#0b0d15;color:var(--ink);font-family:system-ui,sans-serif;overscroll-behavior:none}
-main{position:relative;width:min(100%,780px);height:100vh;height:100svh;min-height:520px;max-height:1000px;margin:auto;overflow:hidden;background:#151823;touch-action:manipulation}
+main{position:relative;width:min(100%,780px);height:100vh;height:100svh;min-height:520px;max-height:1000px;margin:auto;overflow:hidden;background:#151823;touch-action:manipulation;-webkit-user-select:none;user-select:none;-webkit-touch-callout:none}
 header,.stats,footer{position:absolute;z-index:2;left:24px;right:24px;display:flex;justify-content:space-between;align-items:center}
 header{top:max(24px,env(safe-area-inset-top));font-size:13px;letter-spacing:1px}
 .stats{top:82px;font-size:12px;letter-spacing:1px;align-items:flex-start}
@@ -53,3 +53,6 @@ header strong,.stats{font-family:PulsePixel,monospace}
 }
 @media(prefers-reduced-motion:reduce){button:active{transform:none}
 }
+/* Keep browser link actions available; only game artwork suppresses dragging. */
+main a{-webkit-user-select:text;user-select:text;-webkit-touch-callout:default}
+main img{-webkit-user-drag:none}
