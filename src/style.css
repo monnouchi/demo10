@@ -56,3 +56,5 @@ header strong,.stats{font-family:PulsePixel,monospace}
 /* Keep browser link actions available; only game artwork suppresses dragging. */
 main a{-webkit-user-select:text;user-select:text;-webkit-touch-callout:default}
 main img{-webkit-user-drag:none}
+#result-time{position:absolute;right:24px;bottom:6px;font:10px/1.2 PulsePixel,monospace;color:var(--muted);white-space:nowrap}
+@media(max-width:350px){#result-time{right:16px}}

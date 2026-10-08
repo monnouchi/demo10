@@ -1,5 +1,6 @@
 import {drawBuddy} from './character';
-export type RunResult=Readonly<{hits:number,perfect:number,good:number,miss:number,best:number,completed:boolean,allPerfect:boolean}>;
+import type {ResultTimestamp} from './result-time';
+export type RunResult=Readonly<{hits:number,perfect:number,good:number,miss:number,best:number,completed:boolean,allPerfect:boolean,timestamp:ResultTimestamp}>;
 export const publicURL='https://monnouchi.github.io/pulse-hop/';
 export async function resultCard(result:RunResult){
  await document.fonts.load('32px PulsePixel');await document.fonts.ready;
@@ -22,6 +23,7 @@ export async function resultCard(result:RunResult){
  if(result.allPerfect)for(let i=0;i<4;i++){g.save();g.translate([180,350,730,900][i],916);g.scale(2,2);drawBuddy(g,colors[i],'#10141f',false,true,0,0,true);g.fillStyle=colors[i];g.fillRect(-10,-43,4,4);g.fillRect(0,-47,4,4);g.fillRect(10,-43,4,4);g.restore();}
  for(const x of result.allPerfect?[180,350,540,730,900]:[540]){g.fillStyle=accent;g.fillRect(x-54,947,108,8);for(let i=0;i<8;i++)g.fillRect(x-48+i*13,955,5,5)}
  text('5 STAGES / 300 BEATS',80,1000,22,'#a4b1a4');text('MONNOUCHI.GITHUB.IO/PULSE-HOP',80,1030,22,'#a4b1a4');
+ g.save();g.textAlign='right';text(result.timestamp.label,1000,1030,18,'#a4b1a4');g.restore();
  const blob=await new Promise<Blob>((resolve,reject)=>c.toBlob(b=>b?resolve(b):reject(new Error('PNG creation failed')),'image/png'));
  return new File([blob],`pulse-hop-${result.allPerfect?'all-perfect':result.completed?'complete':'retry'}.png`,{type:'image/png'});
 }
